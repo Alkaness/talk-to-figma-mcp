@@ -7,14 +7,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.5.0] - 2026-09-23
+
+First release of the standalone repository [Alkaness/talk-to-figma-mcp](https://github.com/Alkaness/talk-to-figma-mcp).
 
 ### Security
 - **Relay binds to `127.0.0.1` by default**: Bun's default bind address is every interface, so the unauthenticated relay was reachable from the local network and any host on it could read or modify the open Figma file (the origin allowlist only stops browsers). `FIGMA_SOCKET_HOST=0.0.0.0` restores network access and is now required for Windows + WSL; the Docker image sets it inside the container. The MCP server now connects to `ws://127.0.0.1` to match.
 
 ### Changed
+- **New npm package `@alkaness/talk-to-figma-mcp`**. The commands are now `npx @alkaness/talk-to-figma-mcp` (launcher) and `npx -p @alkaness/talk-to-figma-mcp@latest talk-to-figma-mcp-server` (MCP server). The package `claude-talk-to-figma-mcp` belongs to the original project and does not contain these changes; client entries that use it must be replaced (see [INSTALLATION.md, section 4](INSTALLATION.md#4-configure-the-mcp-client)).
+- **Renamed to Talk to Figma**: the Claude Desktop extension (`talk-to-figma-mcp.dxt`, display name "Talk to Figma"), the Figma plugin name (its ID is unchanged, so an existing import keeps working), the messages shown to the agent, and the documentation. The suggested client configuration key is `TalkToFigma` and the MCP server reports itself as `TalkToFigmaMCP`.
+- **Author** is Alkaness; the original authors are listed as contributors in `package.json`.
 - **Documentation rewritten** in a formal style: numbered sections, exact figures, no emojis. `COMMANDS.md` is regenerated from the source and now covers all 107 tools (29 were missing), 5 prompts and 2 resources. `readme.md` is renamed to `README.md`, and `TESTING.md` is merged into `CONTRIBUTING.md`.
 - **Docker instructions** publish the relay on `127.0.0.1:3055` only.
+
+### Fixed
+- **Release workflow**: `dxt pack` names its output after the checkout folder, which no longer matched the `.dxt` file the workflow uploaded, so releases received no asset. The package is now written to the fixed name `talk-to-figma-mcp.dxt` with the pinned `@anthropic-ai/dxt` devDependency, and the artifact upload fails when the file is missing.
+- **`configure-claude`** produced an invalid bin name for a scoped package and suggested a relay command that requires Bun; it now uses `talk-to-figma-mcp-server` and the launcher.
 
 ### Removed
 - `context/` (the original author's development notes), `images/` (banner and unreferenced screenshots), `prompts/` (unlinked UX/UI prompt files), `smithery.yaml` and `TESTING.md`.
