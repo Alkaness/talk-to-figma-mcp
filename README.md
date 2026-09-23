@@ -1,0 +1,133 @@
+# Talk to Figma MCP
+
+[README](README.md) · [Installation](INSTALLATION.md) · [Commands](COMMANDS.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+A Model Context Protocol (MCP) server that lets AI agents read, inspect and edit Figma files. It provides 107 tools, 5 prompts and 2 resources, and works with any Figma account, including free accounts. Figma Dev Mode is not required.
+
+## 1. Overview
+
+The agent talks to the MCP server. The MCP server sends each command through a local relay to a plugin running in the open Figma file, and the result comes back the same way.
+
+Supported MCP clients:
+
+1. [Claude Desktop](https://claude.ai/)
+2. [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+3. [Cursor](https://cursor.com/)
+4. [Antigravity](https://antigravity.google/)
+5. [Windsurf](https://windsurf.com/)
+6. [VS Code](https://code.visualstudio.com/) with [GitHub Copilot](https://github.com/features/copilot)
+7. [Cline](https://marketplace.visualstudio.com/items?itemName=saoudrizwan.claude-dev)
+8. [Roo Code](https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline)
+
+## 2. Requirements
+
+- [Node.js](https://nodejs.org/en/download) 20 or later.
+- [Figma Desktop](https://www.figma.com/downloads/).
+- One of the MCP clients listed above.
+
+[Bun](https://bun.sh) is recommended. The launcher offers to install it and otherwise uses npm.
+
+## 3. Installation
+
+The full guide, including every client, is in [INSTALLATION.md](INSTALLATION.md).
+
+1. **Start the relay.** In the folder where the project should be installed, run:
+
+   ```bash
+   npx claude-talk-to-figma-mcp
+   ```
+
+   The launcher clones the repository, installs dependencies and starts the relay on `127.0.0.1:3055`. In later sessions, run `bun run socket` inside the project folder.
+
+2. **Install the plugin.** In Figma Desktop, open **Menu > Plugins > Development > Import plugin from manifest** and select `src/claude_mcp_plugin/manifest.json` from the project folder.
+
+3. **Configure the MCP client.** For Claude Desktop, install `claude-talk-to-figma-mcp.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases). For other clients, add this server entry (file locations are listed in [INSTALLATION.md, section 4](INSTALLATION.md#4-configure-the-mcp-client)):
+
+   ```json
+   {
+     "mcpServers": {
+       "ClaudeTalkToFigma": {
+         "command": "npx",
+         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+       }
+     }
+   }
+   ```
+
+4. **Connect.** Run the plugin in Figma and click **Connect**.
+
+## 4. Usage
+
+With one Figma file connected, no further setup is needed. The server sends every tool call to that plugin automatically; no channel ID is exchanged.
+
+- If no plugin is connected, the agent receives an error that tells it to ask the user to open the plugin.
+- The plugin reconnects on its own when the relay restarts. Connections that stop answering heartbeats for 25 seconds are closed.
+- With more than one file connected, the agent asks which file to use and calls `join_channel` with the channel ID shown in that file's plugin window.
+
+Example requests:
+
+1. "Find all text with a contrast ratio below 4.5:1 and suggest colors that meet WCAG AA."
+2. "Change #FF6B6B to #E63946 in every primary button in the document."
+3. "Generate a React component for the CardProduct frame, with styles in CSS modules."
+4. "Compare my implementation at http://localhost:3000/pricing with the Pricing frame and list the differences."
+
+## 5. Parallel agents
+
+Several agents, for example Claude Code subagents, can work on the same file at the same time. The relay keeps a queue per channel and sends commands to the plugin one at a time, so the plugin is never given two commands at once.
+
+Because agents cannot rely on a shared "current page":
+
+1. `set_current_page` is blocked by the relay.
+2. Every creation command requires `parentId` (a page or frame ID).
+
+The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
+
+## 6. Capabilities
+
+| Area | Tools | Examples |
+|---|---:|---|
+| Document and pages | 17 | `get_document_info`, `get_node_info`, `get_css`, `get_pages` |
+| Creation | 12 | `create_frame`, `create_text`, `clone_node`, `boolean_operation` |
+| Modification | 24 | `set_fill_color`, `set_auto_layout`, `move_node`, `batch_operations` |
+| Text | 15 | `set_text_content`, `set_font_name`, `get_fonts_used` |
+| Styles and variables | 7 | `create_text_style`, `get_variables`, `apply_variable_to_node` |
+| Components and prototyping | 7 | `create_component_instance`, `set_instance_variant`, `set_reactions` |
+| Images, assets and SVG | 12 | `get_visual_snapshot`, `scan_assets`, `get_asset`, `extract_asset`, `get_svg` |
+| Verification | 2 | `compare_to_figma` (SSIM score and diff heatmap), `capture_render` |
+| FigJam | 6 | `create_sticky`, `create_connector`, `create_section` |
+| REST API | 5 | `rest_get_file`, `rest_render_image`, `rest_get_comments` |
+| **Total** | **107** | |
+
+The 5 REST API tools require a Figma personal access token ([INSTALLATION.md, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They read and render any file the token's owner can open, without the plugin.
+
+The server also provides 5 prompts, including `audit-accessibility` and `export-to-tailwind`, and 2 live resources: `figma://local/selection` and `figma://local/document`. The complete list is in [COMMANDS.md](COMMANDS.md).
+
+## 7. Alternative deployments
+
+**Standalone binaries.** These run without Bun or Node.js installed:
+
+```bash
+npm run build:compile           # dist/bin/figma-mcp-server and dist/bin/figma-socket
+npm run compile:all-platforms   # Linux x64, macOS arm64, Windows x64
+./dist/bin/figma-socket --port=3055
+```
+
+Point the MCP client at `dist/bin/figma-mcp-server`.
+
+**Docker.** The provided `Dockerfile` runs the relay only. See [INSTALLATION.md, section 2.2](INSTALLATION.md#22-using-docker).
+
+## 8. Documentation
+
+| Document | Contents |
+|---|---|
+| [INSTALLATION.md](INSTALLATION.md) | Relay, plugin and client setup; Docker; personal access token |
+| [COMMANDS.md](COMMANDS.md) | All 107 tools, 5 prompts and 2 resources |
+| [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Security model and known error messages |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Architecture, invariants, development and testing |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+
+## 9. Credits and license
+
+Based on [cursor-talk-to-figma-mcp](https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp) by Sonny Lazuardi. Adapted for Claude Desktop and extended with new tools by [Xúlio Zé](https://github.com/arinspunk) in [claude-talk-to-figma-mcp](https://github.com/arinspunk/claude-talk-to-figma-mcp). This repository continues from that project with zero-config routing, visual snapshots, fidelity tools and the Figma REST API by [Alkaness](https://github.com/Alkaness). All contributors are listed in [CONTRIBUTING.md, section 7](CONTRIBUTING.md#7-contributors).
+
+Released under the [MIT License](LICENSE). Issues and feature requests: [GitHub Issues](https://github.com/Alkaness/talk-to-figma-mcp/issues).

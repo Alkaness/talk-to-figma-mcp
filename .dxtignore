@@ -33,10 +33,7 @@ jest.config.cjs
 src/talk_to_figma_mcp/
 src/socket.ts
 
-# Documentation and context
-context/
-prompts/
-smithery.yaml
+# Container setup
 Dockerfile
 
 # Development scripts and temp files
@@ -53,9 +50,6 @@ logs/
 *.cjs.map
 *.d.ts
 *.d.cts
-
-# Large images (keep only icon)
-images/mcp-figma-plugin-configuration.png
 
 # Settings and cache
 .claude/

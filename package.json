@@ -13,9 +13,8 @@
     "dist",
     "scripts/launcher.js",
     "src/claude_mcp_plugin/manifest.json",
-    "readme.md",
+    "README.md",
     "LICENSE",
-    "TESTING.md",
     "CHANGELOG.md"
   ],
   "type": "module",

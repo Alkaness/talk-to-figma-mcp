@@ -1,211 +1,192 @@
 # Contributing
 
-📖 [**Commands**](COMMANDS.md) | 🚀 [**Installation**](INSTALLATION.md) | 🛠️ [**Contributing**](CONTRIBUTING.md) | 🆘 [**Troubleshooting**](TROUBLESHOOTING.md) | 📜 [**Changelog**](CHANGELOG.md)
+[README](README.md) · [Installation](INSTALLATION.md) · [Commands](COMMANDS.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
-Thank you for your interest in contributing to Claude Talk to Figma MCP.
+This guide describes the architecture, the rules that changes must preserve, the development setup and the test suites.
 
-## Architecture
+## 1. Architecture
 
 ```
-+----------------+     +-------+     +---------------+     +---------------+
-|                |     |       |     |               |     |               |
-| Claude Desktop |<--->|  MCP  |<--->| WebSocket Srv |<--->| Figma Plugin  |
-|   (AI Agent)   |     |       |     |  (Port 3055)  |     |  (UI Plugin)  |
-|                |     |       |     |               |     |               |
-+----------------+     +-------+     +---------------+     +---------------+
++------------+  stdio  +------------+  WebSocket  +-----------------+  WebSocket  +---------------+
+| MCP client | <-----> | MCP server | <---------> |      Relay      | <---------> | Figma plugin  |
+|  (agent)   |         |            |             | 127.0.0.1:3055  |             | (code.js, UI) |
++------------+         +------------+             +-----------------+             +---------------+
 ```
 
-### Design principles
+| Component | Source | Responsibility |
+|---|---|---|
+| MCP server | `src/talk_to_figma_mcp/` | Tool, prompt and resource definitions, input validation, defaults, result validation. |
+| Relay | `src/socket.ts` | Routing between agents and plugins, one command queue per channel, origin checks, heartbeats. |
+| Plugin | `src/claude_mcp_plugin/` | Executes commands with the Figma Plugin API. Contains no business logic. |
 
-- **MCP Server:** Business logic, validation, default values
-- **WebSocket Server:** Message routing and protocol translation
-- **Figma Plugin:** Pure command executor within the Figma context
+Routing and timing:
 
-### Benefits of this architecture
+1. Agents join a shared automatic channel. The relay forwards each command to the only connected plugin. With 0 plugins or more than 1, it returns an error that tells the agent what to do.
+2. Each channel processes one command at a time. A command is cancelled after 120 seconds without progress from the plugin.
+3. The relay pings plugins every 10 seconds and closes a plugin connection after 25 seconds without a reply, unless it is still running a command.
+4. The MCP server waits up to 15 seconds for a connection before failing a call, and reconnects with backoff of up to 30 seconds.
 
-- Clear separation of concerns
-- Easy to test and maintain
-- Scalable for adding new tools
-
-## Project structure
+## 2. Project structure
 
 ```
 src/
-  talk_to_figma_mcp/        # MCP server implementation
-    server.ts               # Main entry point
-    tools/                  # Tool categories
-      document-tools.ts     # Document interaction
-      creation-tools.ts     # Shape and element creation
-      modification-tools.ts # Property modification
-      text-tools.ts         # Text manipulation
-    utils/                  # Shared utilities
-    types/                  # TypeScript definitions
-  claude_mcp_plugin/        # Figma plugin
-    code.js                 # Plugin implementation
-    manifest.json           # Plugin configuration
+  socket.ts                  Relay (WebSocket server)
+  shared/commands.ts         Command registry used by the MCP server, relay and tests
+  talk_to_figma_mcp/         MCP server
+    server.ts                Entry point
+    config/config.ts         CLI arguments and server metadata (version)
+    tools/                   13 *-tools.ts files, 107 tools; index.ts registers them
+    prompts/index.ts         5 MCP prompts
+    resources/index.ts       2 MCP resources
+    utils/                   WebSocket client, logger, result schemas, image comparison,
+                             headless capture, REST client, CSS and asset helpers
+    types/                   Shared TypeScript types
+  claude_mcp_plugin/         Figma plugin
+    manifest.json            Plugin manifest (import this in Figma)
+    code.js                  Command handlers
+    ui.html                  Connection UI
+tests/
+  unit/utils/                Jest unit tests for utilities
+  unit/*.test.ts             Relay tests (bun:test)
+  integration/               Jest tests for tool handlers against a mocked plugin
+  fixtures/                  Shared test data
+scripts/                     Launcher, Claude Desktop configurator, guided integration test
+manifest.json                DXT (Claude Desktop extension) manifest
 ```
 
-## Invariants
+## 3. Invariants
 
-Rules that past bugs depend on. Each is also commented where it lives in the code.
+These rules protect against earlier bugs. Each one is also commented where it lives in the code.
 
-- **Relay disconnect order** (`src/socket.ts`, close handler): `cleanupClient()` must run *before* empty channels are removed. In zero-config mode the plugin is alone in its channel, so deleting the channel first drops the error flush and the agent hangs until timeout. Covered by `tests/unit/relay-disconnect.test.ts`.
-- **No side effects on import** (`src/socket.ts`): the relay only starts through `startRelay()` behind `isMainModule()`. Tests import the module, so don't add top-level `Bun.serve` or timers.
-- **Origin allowlist**: the relay has no auth, so the Origin check (no Origin, `null`, `*.figma.com`, plus `FIGMA_SOCKET_ALLOWED_ORIGINS`) is all that stops any open web page from driving the user's Figma file. Don't loosen it. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
-- **Command names** live in `src/shared/commands.ts` (used by the MCP server, relay and tests). A new command goes there *and* in `handleCommand` in `code.js`.
-- **Plugin results**: validate with `parseCommandResult()` and a schema in `utils/command-results.ts` only when the result feeds logic. Display-only results stay unvalidated on purpose; add a schema when that changes.
-- **`parentId` is required** in creation tool schemas. The relay enforces it too.
-- **Logging**: use `logger` from `utils/logger.ts` (stderr only; stdout belongs to MCP). Debug is gated by `LOG_LEVEL=debug`. Never log whole payloads (snapshots are multi-MB base64); use `truncateForLog()`.
+1. **Relay disconnect order** (`src/socket.ts`, close handler). `cleanupClient()` must run before empty channels are removed. In zero-config mode the plugin is alone in its channel, so deleting the channel first drops the error flush and the agent waits for the full timeout. Covered by `tests/unit/relay-disconnect.test.ts`.
+2. **No side effects on import** (`src/socket.ts`). The relay starts only through `startRelay()`, behind `isMainModule()`. Tests import the module, so do not add a top-level `Bun.serve` or timers.
+3. **Loopback bind.** `startRelay()` binds `127.0.0.1` unless a hostname is passed. Bun's own default binds every interface. Covered by `tests/unit/relay-disconnect.test.ts`.
+4. **Origin allowlist.** The relay has no authentication, so the Origin check (no Origin, `null`, `*.figma.com`, plus `FIGMA_SOCKET_ALLOWED_ORIGINS`) is what stops a web page from controlling the user's Figma file. Do not loosen it. See [Troubleshooting, section 1](TROUBLESHOOTING.md#1-security-model).
+5. **Command names** live in `src/shared/commands.ts`. A new command is added there and to `handleCommand` in `code.js`.
+6. **Plugin results** are validated with `parseCommandResult()` and a schema in `utils/command-results.ts` only when the result feeds logic. Display-only results stay unvalidated on purpose; add a schema when that changes.
+7. **`parentId` is required** in every creation tool schema. The relay enforces it as well.
+8. **Logging** goes through `logger` in `utils/logger.ts`, which writes to stderr because stdout carries the MCP protocol. Debug output requires `LOG_LEVEL=debug`. Never log whole payloads (snapshots can be several MB of base64); use `truncateForLog()`.
 
-## Environment setup
+## 4. Development setup
 
 ```bash
 git clone https://github.com/Alkaness/talk-to-figma-mcp.git
 cd talk-to-figma-mcp
 bun install
+bun run build        # bun run build:win on Windows
 ```
 
-Build:
-- **macOS/Linux:** `bun run build`
-- **Windows:** `bun run build:win`
+| Command | Output |
+|---|---|
+| `bun run build` | `dist/` (MCP server and relay) |
+| `bun run build:watch` | Rebuilds on change |
+| `bun run socket` | Starts the relay from `dist/` |
+| `npm run build:dxt` | Syncs versions, builds, and packs `claude-talk-to-figma-mcp.dxt` |
+| `npm run build:compile` | Standalone binaries for the current platform in `dist/bin/` |
+| `npm run compile:all-platforms` | Binaries for Linux x64, macOS arm64 and Windows x64 |
 
-### Create DXT package
+### 4.1 Using a local build in Claude Desktop
 
-To generate your own DXT package for distribution:
+`bun run configure-claude` is meant for end users and points Claude Desktop at the published npm package. For local development, edit `claude_desktop_config.json` instead:
 
-```bash
-npm run build:dxt
-```
-
-This creates `claude-talk-to-figma-mcp.dxt` in the root directory.
-
-## Local development with Claude Desktop
-
-If you're developing new features or fixing bugs, you'll want to test your local changes directly in Claude Desktop.
-
-**Important:** Do not use `bun run configure-claude` for local development, as this script is designed for end users and configures Claude to download the official version from NPM.
-
-### Manual configuration
-
-To use your local version, you must manually edit the Claude Desktop configuration file:
-
-- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-
-Add (or modify) the entry in `mcpServers` pointing to your locally built file:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
   "mcpServers": {
     "ClaudeTalkToFigma-Local": {
       "command": "node",
-      "args": [
-        "/YOUR/PATH/TO/PROJECT/claude-talk-to-figma-mcp/dist/talk_to_figma_mcp/server.js"
-      ]
+      "args": ["/ABSOLUTE/PATH/TO/talk-to-figma-mcp/dist/talk_to_figma_mcp/server.js"]
     }
   }
 }
 ```
 
-> **Note:** Remember that you must run `bun run build` every time you make changes to the server code and restart Claude Desktop for the changes to take effect.
+Run `bun run build` and restart Claude Desktop after each change to the server.
 
+## 5. Testing
 
-## Testing
+### 5.1 Automated tests
 
-### Automated tests
+| Command | Runs |
+|---|---|
+| `bun run test` | Jest suite (`tests/unit/utils`, `tests/integration`) |
+| `bun run test:socket` | Relay tests (`tests/unit/*.test.ts`, `bun:test`) |
+| `bun run test:all` | Typecheck, then both suites. CI runs this on Node 20 and 22. |
+| `bun run test:watch` | Jest in watch mode |
+| `bun run test:coverage` | Jest with a coverage report |
 
-```bash
-bun run test            # Jest suite
-bun run test:socket     # Relay tests (bun:test, excluded from jest)
-bun run test:all        # Typecheck + both of the above
-bun run test:watch      # Watch mode
-bun run test:coverage   # Coverage report
-```
+Use `bun run test`, not `bun test`. The latter runs the Jest files under Bun's test runner, and they fail there.
 
-### Integration tests
+To add a test:
+
+1. **Utility:** add `tests/unit/utils/<name>.test.ts`.
+2. **Tool handler:** add a file to `tests/integration/` and use the data in `tests/fixtures/`.
+3. **Relay behavior:** extend `tests/unit/relay-disconnect.test.ts`. It starts the real relay with `startRelay({ port: 0 })`. Any new `bun:test` file must also be added to `testPathIgnorePatterns` in `jest.config.cjs` and to the `test:socket` script.
+
+### 5.2 Guided integration test
 
 ```bash
 bun run test:integration
 ```
 
-This script guides you step by step to test the complete flow between Claude, the WebSocket server, and Figma.
+The script walks through the full path from MCP client to relay to Figma, step by step.
 
-### Manual verification
+### 5.3 Manual verification
 
-Checklist:
+1. `bun install` completes without errors.
+2. The relay starts and `http://localhost:3055/status` returns JSON with the relay status and statistics.
+3. `ss -ltn 'sport = :3055'` (Linux) or `lsof -i :3055` (macOS) shows the relay on `127.0.0.1` only.
+4. The plugin imports from `src/claude_mcp_plugin/manifest.json` and connects.
+5. The MCP client lists the server (`ClaudeTalkToFigma`).
+6. Asking "Show me information about my current Figma selection" returns the selection without any channel ID.
+7. Creating and recoloring a rectangle works, with `parentId` set.
+8. After the relay restarts, the plugin and the MCP server reconnect on their own.
 
-- [ ] The WebSocket server starts on port 3055
-- [ ] The Figma plugin connects and generates a channel ID
-- [ ] The MCP client recognizes "ClaudeTalkToFigma"
-- [ ] Basic commands work (create rectangle, change color)
-- [ ] Error handling works (invalid commands, timeouts)
-- [ ] Channel communication works between client and Figma
+### 5.4 Diagnostics
 
-For more detailed testing documentation, see [TESTING.md](TESTING.md).
+1. **Relay log:** the terminal running the relay. Set `LOG_LEVEL=debug` for message traffic.
+2. **Status endpoint:** `http://localhost:3055/status`.
+3. **Figma console:** **Menu > Plugins > Development > Show/Hide console**.
+4. **Restart order:** see [Troubleshooting, section 6.1](TROUBLESHOOTING.md#61-restart-sequence).
 
-## Contribution guide
+## 6. Submitting changes
 
-### 1. Fork and branch
+1. Create a branch: `git checkout -b feature/<name>`.
+2. Follow the existing TypeScript patterns, type every public function and use English names.
+3. Add tests for new behavior and edge cases. `bun run test:all` must pass.
+4. Update the documentation:
+   - `COMMANDS.md` for any new or changed tool, including the counts in section 1.
+   - `CHANGELOG.md` under `[Unreleased]`.
+   - For a release, set the version in `package.json` and run `npm run sync-version` to copy it to `manifest.json` and `config/config.ts`.
+5. Open a pull request with a description of the change, related issues, and screenshots for visual changes.
 
-```bash
-git checkout -b feature/my-new-feature
-```
+## 7. Contributors
 
-### 2. Code standards
+Contributions to this project and to the project it continues from ([arinspunk/claude-talk-to-figma-mcp](https://github.com/arinspunk/claude-talk-to-figma-mcp)):
 
-- Follow existing TypeScript patterns
-- Add types for all public functions
-- Use descriptive names in English
+- **[Rob Dearborn](https://github.com/rfdearborn)**: FigJam support (6 tools), component lookup optimization, `set_text_style_id`.
+- **[sometimesdante](https://github.com/sometimesdante)**: full instruction copy on channel click.
+- **[ehs208](https://github.com/ehs208)**: configuration script, Korean localization, channel verification ping, `set_instance_variant`, coordinate system unification, Docker setup, image tools, Zod coercion helpers.
+- **[mmabas77](https://github.com/mmabas77)**: text alignment and right-to-left support, `set_selection_colors`, more than 20 tools (variables, gradients, grids, transformations), the parallel command queue, node info depth control.
+- **[leeyc09](https://github.com/leeyc09)**: fixed-width text, dependency stability.
+- **[sk (kovalevsky)](https://github.com/kovalevsky)**: page management tools, SVG export fix.
+- **[Beomsu Koh](https://github.com/GoBeromsu)**: `rename_node`.
+- **[Timur](https://github.com/Mirsmog)**: Zod validation improvements.
+- **[Taylor Smits](https://github.com/smitstay)**: DXT package, CI workflows, tests.
+- **[hoxinzhen](https://github.com/hoxinzhen)**: `detach_instance`.
+- **[Kejsaren](https://github.com/hello-amed)**: style creation tools (`create_text_style`, `create_paint_style`, `create_effect_style`).
+- **[ravszmig](https://github.com/ravszmig)**: prototype interaction tools (`set_reactions`, `get_reactions`).
+- **[easyhak](https://github.com/easyhak)**: Windows script compatibility.
 
-### 3. Tests
+Community pull requests integrated manually upstream:
 
-- Add tests for new functionality
-- Make sure existing tests pass
-- Include edge case tests
+1. **#90 (mmabas77), node info depth control.** `depth` parameter for `get_node_info` and `get_nodes_info`; deeper nodes are returned as `{id, name, type}` stubs, which reduces payload size by about 98% on large documents.
+2. **#87 (mmabas77), plugin quality improvements.** Layout grid handling (stretch and fixed modes), `clone_node` with `parentId`, text wrapping, numeric font weights, unified fill and stroke on shape tools, automatic column grids for top-level frames, safe color utilities.
+3. **#85 (hoxinzhen), component detaching.**
+4. **#83 (Kejsaren), local style creation.**
 
-### 4. Documentation
+## 8. License
 
-- Update COMMANDS.md if you add tools
-- Update CHANGELOG.md with your changes
-- Add comments in complex code
-
-### 5. Pull Request
-
-- Clear description of changes
-- Reference to related issues
-- Screenshots if there are visual changes
-
-## Contributors
-
-- **[Rob Dearborn](https://github.com/rfdearborn)** — Comprehensive FigJam support (6 new tools), component optimization, and `set_text_style_id` tool.
-- **[sometimesdante](https://github.com/sometimesdante)** — Full instruction copy on channel click.
-- **[ehs208](https://github.com/ehs208)** — Configuration script, Korean localization, channel verification ping, `set_instance_variant` tool, coordinate system unification, Docker orchestration, image manipulation tools, and Zod coercion helpers for robust serialization.
-- **[mmabas77](https://github.com/mmabas77)** — Full text alignment support, RTL/Arabic languages, `set_selection_colors` tool, massive expansion with 20+ new tools (variables, gradients, grids, and transformations), the multi-agent parallel command queue architecture, and node info depth control.
-- **[leeyc09](https://github.com/leeyc09)** — Fixed-width text support and dependency stability improvements.
-- **[sk (kovalevsky)](https://github.com/kovalevsky)** — Page management tools and SVG export fix.
-- **[Beomsu Koh](https://github.com/GoBeromsu)** — `rename_node` tool.
-- **[Timur](https://github.com/Mirsmog)** — Zod validation improvements.
-- **[Taylor Smits](https://github.com/smitstay)** — DXT package support, CI/CD workflows, and tests.
-- **[hoxinzhen](https://github.com/hoxinzhen)** — `detach_instance` tool.
-- **[Kejsaren](https://github.com/hello-amed)** — Style creation tools (`create_text_style`, `create_paint_style`, `create_effect_style`).
-- **[ravszmig](https://github.com/ravszmig)** — Prototype interaction tools (`set_reactions`, `get_reactions`) and overlay navigation logic.
-- **[easyhak](https://github.com/easyhak)** — Windows script compatibility.
-
-### Ported Community Contributions (Manual Integration)
-- **PR #90 (mmabas77)**: Node Info Depth Control.
-  - Added `depth` parameter to `get_node_info` and `get_nodes_info` to prevent token overflow.
-  - Smart truncation: deeper nodes are returned as stubs (`{id, name, type}`) instead of being fully expanded.
-  - Significant reduction (~98%) of payload size for large Figma documents.
-- **PR #87 (mmabas77)**: Plugin Quality Improvements.
-  - Robust layout grids (handling STRETCH vs fixed-pixel modes).
-  - Enhanced `clone_node` with `parentId` support.
-  - Smart text wrapping and numeric font weight mapping.
-  - Unified styling (fill/stroke) for all basic shape creation tools.
-  - Automatic column grids for top-level frames.
-  - Safe color utilities to prevent accidental black-fills on corrupt data.
-- **PR #85 (hoxinzhen)**: Component Detaching.
-- **PR #83 (Kejsaren)**: Local Style Creation.
-
-## License
-
-By contributing, you agree that your contributions will be licensed under the project's [MIT License](LICENSE).
+Contributions are licensed under the project's [MIT License](LICENSE).

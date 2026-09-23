@@ -1,203 +1,254 @@
-# Available commands
+# Command Reference
 
-📖 [**Commands**](COMMANDS.md) | 🚀 [**Installation**](INSTALLATION.md) | 🛠️ [**Contributing**](CONTRIBUTING.md) | 🆘 [**Troubleshooting**](TROUBLESHOOTING.md) | 📜 [**Changelog**](CHANGELOG.md)
+[README](README.md) · [Installation](INSTALLATION.md) · [Commands](COMMANDS.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
-Complete reference of the tools Claude can use to interact with Figma.
+This document lists every tool, prompt and resource the MCP server registers. It is kept in sync with `src/talk_to_figma_mcp/tools/*-tools.ts`, `prompts/index.ts` and `resources/index.ts`.
 
-> **Zero-config:** you don't need to "connect to a channel" — tool calls auto-route to the single connected plugin. `join_channel` is only needed to disambiguate when multiple Figma files are connected.
+Tool calls are routed to the connected Figma plugin automatically. `join_channel` is only needed when more than one Figma file is connected at the same time.
 
-## Document and page tools
+## 1. Summary
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `get_document_info` | Document analysis | Get project overview |
-| `get_selection` | Current selection | What is currently selected |
-| `get_node_info` | Element details | Inspect a specific component |
-| `get_nodes_info` | Multiple elements info | Batch inspection |
-| `get_css` | Figma Dev-Mode CSS | Faithful styles for 1:1 code |
-| `scan_text_nodes` | Find all text nodes | Text audit and update |
-| `get_styles` | Document styles | Color and text style audit |
-| `join_channel` | (Advanced) target a specific file | Only when multiple plugins are connected |
-| `export_node_as_image` | Export assets | Generate design assets |
-| `get_pages` | List pages | View all document pages |
-| `create_page` | Create page | Add a new page to the document |
-| `delete_page` | Delete page | Remove a specific page |
-| `rename_page` | Rename page | Change a page's name |
-| `set_current_page` | Switch page | Go to a specific page |
+| Section | Tools | Source file |
+|---|---:|---|
+| 2. Document and pages | 17 | `document-tools.ts` |
+| 3. Creation | 12 | `creation-tools.ts` |
+| 4. Modification | 24 | `modification-tools.ts` |
+| 5. Text | 15 | `text-tools.ts` |
+| 6. Styles | 3 | `style-tools.ts` |
+| 7. Variables | 4 | `variable-tools.ts` |
+| 8. Components and prototyping | 7 | `component-tools.ts` |
+| 9. Images and assets | 8 | `image-tools.ts` |
+| 10. Asset export | 2 | `asset-tools.ts` |
+| 11. SVG | 2 | `svg-tools.ts` |
+| 12. Verification | 2 | `verify-tools.ts` |
+| 13. FigJam | 6 | `figjam-tools.ts` |
+| 14. REST API (requires a token) | 5 | `rest-tools.ts` |
+| **Total** | **107** | |
 
-## Vision & fidelity tools
+102 tools communicate with the Figma plugin. The 5 REST API tools call the Figma REST API directly and are registered only when a personal access token is configured. The server also provides 5 prompts (section 15) and 2 resources (section 16).
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `get_visual_snapshot` | PNG of the selection so the agent can *see* it | Verify layout/spacing/fonts before finishing |
-| `compare_to_figma` | Compare your implemented UI vs a Figma node | **SSIM** similarity %, color delta, 3×3 region map, overflow check, + a saved **diff heatmap** PNG |
-| `get_css` | Figma's exact computed CSS (Dev Mode) | Generate pixel-faithful styles |
-| `get_fonts_used` | Inventory fonts in a subtree | Set up `@font-face` / web fonts |
-| `scan_assets` | Inventory images + vector/icon nodes | Decide which assets to extract |
-| `get_asset` | Extract one asset to a file (image bytes / SVG) | Pull photos, logos, icons into your project |
-| `classify_asset` | Recommend **raster / SVG / CSS** for a node, with reasons | Decide how to bring a node into code before extracting |
-| `extract_asset` | Export a node **CLEAN** (effects stripped) + the effects as CSS | Crisp asset for nodes with shadow/blur/NOISE; reapply `box-shadow`/`filter` in code |
+## 2. Document and pages (17)
 
-## Image tools
+| Tool | Description |
+|---|---|
+| `get_document_info` | Returns detailed information about the current document. |
+| `get_selection` | Returns information about the current selection. |
+| `get_node_info` | Returns detailed information about one node, including `absoluteBoundingBox` and `localPosition`. Accepts a `depth` limit. |
+| `get_nodes_info` | Returns detailed information about several nodes, exported in batches of 5. Accepts a `depth` limit. |
+| `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection; `recursive=true` covers the subtree. |
+| `get_styles` | Returns all local styles in the document. |
+| `get_local_components` | Returns all local components. |
+| `get_remote_components` | Returns components available from team libraries. |
+| `scan_text_nodes` | Returns every text node inside the given node. |
+| `export_node_as_image` | Exports a node as PNG, JPG, SVG or PDF. PDF output is written to `figma-assets/` and returned as a path. |
+| `join_channel` | Targets a specific plugin channel. Needed only when several Figma files are connected. |
+| `get_pages` | Lists all pages in the document. |
+| `create_page` | Creates a page. |
+| `delete_page` | Deletes a page. |
+| `rename_page` | Renames a page. |
+| `duplicate_page` | Duplicates a page with all of its contents. |
+| `set_current_page` | Deprecated and blocked by the relay. Pass the page ID as `parentId` on creation commands instead; use `get_pages` to find page IDs. |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `set_image_fill` | Apply image to node | Set product photos, avatars |
-| `get_image_from_node` | Extract image metadata | Audit images in design |
-| `replace_image_fill` | Swap images | Update assets, placeholders |
-| `apply_image_transform` | Adjust image position/scale/rotation | Pan, zoom, rotate image inside node |
-| `set_image_filters` | Apply color/light adjustments | Brightness, contrast, saturation, etc. |
+## 3. Creation (12)
 
-**⚠️ Known Limitations:**
-- **URL images**: Must be whitelisted in `manifest.json` (`allowedDomains`). Use base64 (`sourceType: "base64"`) for no restrictions.
-- **Data URIs not supported**: `data:image/...` format unsupported
-- **Rotation**: 90° increments only (0, 90, 180, 270)
+All creation tools require `parentId`. See section 17.
 
-## Creation tools
+| Tool | Description |
+|---|---|
+| `create_rectangle` | Creates a rectangle. |
+| `create_frame` | Creates a frame. |
+| `create_text` | Creates a text node. Accepts a fixed `width` for wrapping. |
+| `create_ellipse` | Creates an ellipse. |
+| `create_polygon` | Creates a polygon. |
+| `create_star` | Creates a star. |
+| `group_nodes` | Groups nodes. |
+| `ungroup_nodes` | Ungroups a group. |
+| `clone_node` | Clones a node into the given parent. |
+| `insert_child` | Moves a node into a new parent. |
+| `flatten_node` | Flattens a node into a single vector. |
+| `boolean_operation` | Applies union, subtract, intersect or exclude to two or more nodes with the same parent. |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `create_rectangle` | Basic shapes | Buttons, backgrounds |
-| `create_frame` | Layout containers | Page sections, cards |
-| `create_text` | Text elements | Headings, labels |
-| `create_ellipse` | Circles/ovals | Profile pictures, icons |
-| `create_polygon` | Polygon shapes | Custom geometric elements |
-| `create_star` | Stars | Decorative elements |
-| `clone_node` | Duplicate elements | Copy existing designs |
-| `group_nodes` | Organize elements | Component grouping |
-| `ungroup_nodes` | Separate groups | Decompose components |
-| `insert_child` | Nest elements | Hierarchical structure |
-| `flatten_node` | Vector operations | Boolean operations |
+## 4. Modification (24)
 
-## Modification tools
+| Tool | Description |
+|---|---|
+| `set_fill_color` | Sets a solid fill. Alpha defaults to 1; alpha 0 is fully transparent. |
+| `set_stroke_color` | Sets the stroke color. Defaults: opacity 1, weight 1. A weight of 0 is allowed. |
+| `set_selection_colors` | Recolors every fill and stroke in a node and its descendants, like Figma's "Selection colors". |
+| `set_gradient` | Sets a linear, radial, angular or diamond gradient. Replaces existing fills. |
+| `set_image` | Sets an image fill from base64 data (PNG, JPEG, GIF, WebP; about 5 MB maximum after decoding). |
+| `move_node` | Moves a node. Coordinates are local to the parent. |
+| `resize_node` | Resizes a node. |
+| `rotate_node` | Rotates a node clockwise by degrees. `relative=true` adds to the current rotation. |
+| `reorder_node` | Changes the layer order of a node within its parent. |
+| `delete_node` | Deletes a node. |
+| `rename_node` | Renames a node. |
+| `set_node_properties` | Sets visibility, lock state and opacity. Omitted properties are unchanged. |
+| `convert_to_frame` | Converts a group or shape into a frame, keeping position, size, styling and children. |
+| `set_corner_radius` | Sets corner radius, per corner if needed. |
+| `set_auto_layout` | Configures auto layout. |
+| `set_effects` | Sets shadows and blurs. |
+| `set_effect_style_id` | Applies an effect style. |
+| `set_grid` | Applies column, row or grid layout grids to a frame. |
+| `get_grid` | Reads the layout grids of a frame. |
+| `set_guide` | Replaces all guides on a page. |
+| `get_guide` | Reads the guides on a page. |
+| `set_annotation` | Adds an annotation label. Uses the proposed Annotations API (Figma Desktop only). |
+| `get_annotation` | Reads the annotations on a node. |
+| `batch_operations` | Applies many `{ command, params }` operations in one call and returns a per-operation result. Recommended for 3 or more nodes. |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `set_fill_color` | Element colors | Apply brand colors |
-| `set_stroke_color` | Border colors | Outline styles |
-| `set_selection_colors` | Bulk recolor | Recolor icons and child groups |
-| `move_node` | Positioning | Layout adjustments |
-| `resize_node` | Size changes | Responsive scaling |
-| `rename_node` | Rename node | Organize layers and components |
-| `delete_node` | Delete elements | Clean up designs |
-| `set_corner_radius` | Rounded corners | Modern UI styles |
-| `set_auto_layout` | Flexbox-like layout | Component spacing |
-| `set_effects` | Shadows/blurs | Visual finishing |
-| `set_effect_style_id` | Apply effect styles | Consistent shadows |
-| `batch_operations` | Apply many edits in one call | Update 50 nodes without 50 round-trips |
+## 5. Text (15)
 
-## Text tools
+| Tool | Description |
+|---|---|
+| `set_text_content` | Replaces the text of a text node. |
+| `set_multiple_text_contents` | Replaces the text of several text nodes in one call. |
+| `set_font_name` | Sets font family and style. |
+| `set_font_size` | Sets font size. |
+| `set_font_weight` | Sets font weight. |
+| `set_letter_spacing` | Sets letter spacing. |
+| `set_line_height` | Sets line height. |
+| `set_paragraph_spacing` | Sets paragraph spacing. |
+| `set_text_case` | Sets text case. |
+| `set_text_decoration` | Sets text decoration. |
+| `set_text_align` | Sets horizontal and vertical alignment. Use `RIGHT` for right-to-left text. |
+| `set_text_style_id` | Applies a text style. |
+| `get_styled_text_segments` | Returns the styled segments of a text node. |
+| `get_fonts_used` | Lists every font family, style and size used in a subtree, with occurrence counts. Defaults to the selection. |
+| `load_font_async` | Loads a font so it can be used. |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `set_text_content` | Update text | Copy changes |
-| `set_multiple_text_contents` | Batch update | Multi-element editing |
-| `set_text_align` | H/V alignment | Align text or fix RTL languages |
-| `set_font_name` | Typography | Apply brand font |
-| `set_font_size` | Text size | Create hierarchy |
-| `set_font_weight` | Text weight | Bold/light variations |
-| `set_text_style_id` | Apply text style | Use corporate typography |
-| `set_letter_spacing` | Character spacing | Typography fine-tuning |
-| `set_line_height` | Vertical spacing | Text readability |
-| `set_paragraph_spacing` | Paragraph spacing | Content structure |
-| `set_text_case` | Case transformation | UPPERCASE/lowercase/Title |
-| `set_text_decoration` | Text styles | Underline/strikethrough |
-| `get_styled_text_segments` | Text analysis | Rich text inspection |
-| `get_fonts_used` | Font inventory | List fonts for web-font setup |
-| `load_font_async` | Font loading | Custom font access |
+## 6. Styles (3)
 
-## Component tools
+| Tool | Description |
+|---|---|
+| `create_text_style` | Creates a local text style. |
+| `create_paint_style` | Creates a local solid paint style. |
+| `create_effect_style` | Creates a local effect style (shadows, blurs). |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `get_local_components` | Project components | Design system audit |
-| `get_remote_components` | Team libraries | Access shared components |
-| `create_component_instance` | Use components | Consistent UI elements |
-| `set_instance_variant` | Change variant properties | Switch button states |
+## 7. Variables (4)
 
-## FigJam tools
+| Tool | Description |
+|---|---|
+| `get_variables` | Lists all variable collections with their modes and variables. |
+| `set_variable` | Creates or updates a variable, creating the collection if needed. |
+| `apply_variable_to_node` | Binds a variable to one node property. Call once per property. |
+| `switch_variable_mode` | Sets which mode of a collection a node uses. |
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `get_figjam_elements` | Read board contents | Inspect stickies, connectors, shapes, sections, stamps |
-| `create_sticky` | Create sticky note | Add ideas, comments, or labels to a board |
-| `set_sticky_text` | Update sticky text | Edit existing sticky content |
-| `create_shape_with_text` | Create labeled shape | Flowchart nodes, process boxes, decision diamonds |
-| `create_connector` | Draw connector arrow | Link stickies or shapes with flow arrows |
-| `create_section` | Create section region | Group and organise content areas on the board |
+## 8. Components and prototyping (7)
 
-## MCP Resources
+| Tool | Description |
+|---|---|
+| `create_component_instance` | Creates an instance of a component. |
+| `create_component_from_node` | Converts a frame, group or other node into a component. |
+| `create_component_set` | Combines several components into a variant set. |
+| `set_instance_variant` | Changes an instance's variant properties while keeping its overrides. |
+| `detach_instance` | Detaches an instance into a regular frame. |
+| `set_reactions` | Sets prototype interactions (for example hover or click) on a node. |
+| `get_reactions` | Reads the prototype interactions on a node. |
 
-Live, read-only resources the agent can read directly (no tool call needed):
+## 9. Images and assets (8)
 
-| Resource URI | Contents |
-|--------------|----------|
-| `figma://local/selection` | The current selection (ids, names, types) — live |
-| `figma://local/document` | Active document overview: current page, pages, top-level children |
+| Tool | Description |
+|---|---|
+| `get_visual_snapshot` | Returns a PNG of the selection or a node so the agent can inspect layout, spacing and fonts. Default scale 2x; large frames are scaled down. |
+| `scan_assets` | Lists image fills (deduplicated by hash, with size and usage) and vector nodes in a subtree. Returns no image bytes. |
+| `get_asset` | Saves one asset to a file: an image fill by `hash`, or a node export by `nodeId` (SVG by default, or PNG/JPG). Returns the path; SVG markup is also returned inline. Repeated hashes are served from a 64 MB in-memory cache. |
+| `set_image_fill` | Applies an image fill from a URL or base64 data. |
+| `get_image_from_node` | Returns image fill metadata for a node. |
+| `replace_image_fill` | Replaces an image fill while keeping its transform. |
+| `apply_image_transform` | Adjusts position, scale and rotation of the image inside a node. |
+| `set_image_filters` | Applies color and light adjustments to image fills. |
 
-## MCP Prompts
+## 10. Asset export (2)
 
-Pre-built workflows (slash commands):
+| Tool | Description |
+|---|---|
+| `classify_asset` | Recommends raster PNG, inline SVG or pure CSS for a node, with reasons. |
+| `extract_asset` | Exports a node without its effects (at the same resolution) and returns the effects as CSS (`box-shadow`, `filter`). Works on a temporary clone, so the document is not modified. |
 
-| Prompt | Purpose |
-|--------|---------|
-| `/audit-accessibility` | WCAG AA audit of the selection (contrast, text size, 44px touch targets, hierarchy) |
-| `/export-to-tailwind` | Convert the selection to HTML + Tailwind CSS (auto-layout → flex, fills → palette, type → `text-*`) |
+## 11. SVG (2)
 
-## Understanding coordinate systems
+| Tool | Description |
+|---|---|
+| `set_svg` | Imports an SVG string as a vector node. Scripts and external resources are removed first. Maximum 500 KB. |
+| `get_svg` | Exports a node and its children as SVG markup. |
 
-Figma uses two coordinate systems:
+## 12. Verification (2)
 
-- **Global coordinates** (`absoluteBoundingBox`): Position relative to canvas origin (0,0)
-- **Local coordinates** (`localPosition`): Position relative to parent node
+| Tool | Description |
+|---|---|
+| `compare_to_figma` | Compares an implemented UI with a Figma node. Takes either `renderPath` (a PNG) or `url` (captured headlessly at the node's exact size). Reports SSIM similarity, color difference, a 3×3 region map, edge overflow and an optional brand-color check, and writes a diff heatmap PNG. |
+| `capture_render` | Captures a local URL with headless Chromium at an exact size and saves a PNG. Requires Chromium or Chrome; `CHROME_PATH` overrides the binary. |
 
-**When to use which:**
-- `get_node_info` returns both `absoluteBoundingBox` (global) and `localPosition` (local)
-- `move_node` expects local coordinates (same as create operations)
-- To move a node to its current position, use `localPosition.x` and `localPosition.y`
+## 13. FigJam (6)
 
-**Example:**
-```
-Frame at (100, 50)
-  └─ Rectangle
-     - absoluteBoundingBox: {x: 150, y: 80}  ← Global position
-     - localPosition: {x: 50, y: 30}         ← Use for move_node
-```
+| Tool | Description |
+|---|---|
+| `get_figjam_elements` | Returns all stickies, connectors, shapes with text, sections and stamps on the current page. |
+| `create_sticky` | Creates a sticky note. |
+| `set_sticky_text` | Replaces the text of a sticky note. |
+| `create_shape_with_text` | Creates a shape with text. Shapes: `SQUARE`, `ELLIPSE`, `ROUNDED_RECTANGLE`, `DIAMOND`, `TRIANGLE_UP`, `TRIANGLE_DOWN`, `PARALLELOGRAM_RIGHT`, `PARALLELOGRAM_LEFT`. |
+| `create_connector` | Creates an arrow or line between two nodes or two canvas positions. |
+| `create_section` | Creates a section. |
 
-## REST API tools (Personal Access Token)
+## 14. REST API (5)
 
-These tools talk to the **Figma REST API** instead of the plugin. They only appear when a personal access token is configured (`FIGMA_PERSONAL_TOKEN`) — see [Installation](INSTALLATION.md). Unlike the plugin tools, they work **without the plugin open** and against **any file the token's user can access**, addressed by URL or file key. The REST API is read-only for document content (plus comments); use the plugin tools to modify the open file.
+These tools are registered only when `FIGMA_PERSONAL_TOKEN` is set (see [Installation, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They work without the plugin, on any file the token's owner can open, addressed by figma.com URL or file key. The REST API cannot edit document content; `rest_post_comment` is its only write operation.
 
-| Command | Purpose | Usage example |
-|---------|---------|---------------|
-| `rest_whoami` | Verify the configured token | Debug REST setup ("who am I?") |
-| `rest_get_file` | Read a file's node tree by URL/key (no plugin) | Inspect a design you don't have open |
-| `rest_render_image` | Render nodes to PNG/JPG/SVG server-side | *See* a frame from a shared link |
-| `rest_get_comments` | List a file's comments | Triage design feedback |
-| `rest_post_comment` | Post (or reply to) a comment, optionally anchored to a node | Leave review notes from the agent |
+| Tool | Description |
+|---|---|
+| `rest_whoami` | Returns the handle and email of the token's owner. |
+| `rest_get_file` | Returns a file's node tree up to the requested depth. |
+| `rest_render_image` | Renders nodes to PNG, JPG or SVG on Figma's servers, saves them to disk and returns the first raster image inline. |
+| `rest_get_comments` | Lists a file's comments with author, message, anchored node and resolved state. |
+| `rest_post_comment` | Posts a comment or a reply, optionally anchored to a node. |
 
-> **Token hygiene:** the token is read once from the environment, sent only in the `X-Figma-Token` header (never in a URL), and scrubbed from error messages. Rate limits (HTTP 429) are retried with `Retry-After`/backoff automatically.
+The token is read once from the environment, sent only in the `X-Figma-Token` header and removed from error messages. HTTP 429 responses are retried using `Retry-After` or exponential backoff.
 
-## Effective prompt examples
+## 15. MCP prompts (5)
 
-```
-✅ Good: "Create a dashboard with side navigation, a header with user 
-profile, and a main area with metric cards"
+| Prompt | Description |
+|---|---|
+| `design_strategy` | Best practices for creating and editing Figma designs. |
+| `read_design_strategy` | Best practices for reading Figma designs. |
+| `text_replacement_strategy` | A step-by-step method for replacing text across a design. |
+| `audit-accessibility` | Audits the selection against WCAG AA: contrast, text size, 44 px touch targets and hierarchy. |
+| `export-to-tailwind` | Converts the selection to HTML with Tailwind CSS classes. |
 
-✅ Good: "Redesign this button component with hover states and 
-better contrast ratios"
+## 16. MCP resources (2)
 
-✅ Good: "Analyze the accessibility of this screen and fix the 
-contrast issues"
+| URI | Contents |
+|---|---|
+| `figma://local/selection` | The current selection (IDs, names, types), read live. |
+| `figma://local/document` | The current page, the page list and the top-level children, read live. |
 
-❌ Avoid: "Make it pretty" (too vague)
+## 17. Rules for creation and layout
 
-❌ Avoid: "Improve the design" (no specific criteria)
-```
+1. **`parentId` is required** on every creation command. Pass a page ID (from `get_pages`) or a frame ID. Several agents can edit the same file at once, so the server never relies on the "current page".
+2. **Coordinates are local.** `move_node` and all creation tools use coordinates relative to the parent. `get_node_info` returns both:
+   - `absoluteBoundingBox`: position relative to the canvas origin.
+   - `localPosition`: position relative to the parent. Use this with `move_node`.
 
-## Usage tips
+   ```
+   Frame at (100, 50)
+     Rectangle
+       absoluteBoundingBox: { x: 150, y: 80 }   global
+       localPosition:       { x: 50,  y: 30 }   use with move_node
+   ```
+3. **Use `batch_operations`** for edits to 3 or more nodes. It avoids one round trip per node and reports each failure separately.
 
-1. **Be specific:** The more detailed the instruction, the better the result
-2. **Use references:** "Like the button in the previous section" helps maintain consistency
-3. **Break down complex tasks:** It's better to make several small changes than one very large one
-4. **Check selection:** Make sure the correct element is selected before requesting modifications
+## 18. Writing effective requests
+
+Specific requests produce predictable results:
+
+- "Create a dashboard with side navigation, a header with a user profile, and a main area with metric cards."
+- "Redesign this button component with hover states and a contrast ratio of at least 4.5:1."
+- "Find every text layer with contrast below 4.5:1 and propose compliant colors."
+
+Requests without criteria, such as "make it pretty" or "improve the design", give the agent nothing to measure against.
+
+Additional guidance:
+
+1. Refer to existing elements by name ("like the button in the header") to keep results consistent.
+2. Split large changes into several smaller requests.
+3. Check that the intended element is selected before asking for a modification.

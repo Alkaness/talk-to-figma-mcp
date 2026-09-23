@@ -1,204 +1,180 @@
 # Troubleshooting
 
-📖 [**Commands**](COMMANDS.md) | 🚀 [**Installation**](INSTALLATION.md) | 🛠️ [**Contributing**](CONTRIBUTING.md) | 🆘 [**Troubleshooting**](TROUBLESHOOTING.md) | 📜 [**Changelog**](CHANGELOG.md)
+[README](README.md) · [Installation](INSTALLATION.md) · [Commands](COMMANDS.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
-Guide to resolving the most common errors.
+This guide lists known error messages with their cause and resolution. Headings in quotation marks are the exact text returned to the agent.
 
-## Security model
+## 1. Security model
 
-The relay (`localhost:3055`) gives full **read and write access to whatever Figma file has the plugin connected**. The plugin path needs no API token; a Figma **personal access token** is optional and only enables the REST API tools (see below). Keep these rules in mind:
+The relay gives full read and write access to the Figma file that has the plugin connected. The plugin path needs no API token. A Figma personal access token is optional and only enables the REST API tools.
 
-- **The personal access token is a secret.** If you set `FIGMA_PERSONAL_TOKEN`, it grants REST access to every file your Figma account can open. Prefer the DXT keychain field or an environment variable over committing it to a shared `mcp.json`; the server only ever sends it in the `X-Figma-Token` header and scrubs it from errors. Revoke it anytime in Figma → Settings → Security.
+1. **Network exposure.** The relay listens on `127.0.0.1` only. `FIGMA_SOCKET_HOST=0.0.0.0` makes it reachable from the network. The relay has no authentication and the origin check below does not apply to non-browser clients, so set this only on a trusted network. It is required for Windows with WSL; the Docker image sets it inside the container.
+2. **Origin allowlist.** Browsers do not apply CORS to WebSocket connections, so the relay rejects browser requests unless the origin is the plugin sandbox (`null`) or `*.figma.com`. Clients that send no `Origin` header, such as the MCP server, are not affected. To allow another browser client, for example a local dashboard:
 
-- **Origin allowlist (CSWSH protection).** Browsers don't apply CORS to WebSockets, so the relay rejects browser connections from origins other than the Figma plugin sandbox (`null`) and `*.figma.com`. Non-browser clients (the MCP server) are unaffected. If you have a legitimate browser client (e.g. a local dashboard), allow it explicitly:
-  ```bash
-  FIGMA_SOCKET_ALLOWED_ORIGINS="http://localhost:5173" bun run socket
-  ```
-  A blocked request logs `Rejected request from disallowed origin …` on the relay.
-- **The relay listens on `127.0.0.1` only.** `FIGMA_SOCKET_HOST=0.0.0.0` exposes it to your network, and the origin allowlist does **not** protect against non-browser clients. Set it only on a trusted network; it is required for Windows + WSL setups (the Docker image sets it inside the container).
-- **Debug logging is opt-in.** Set `LOG_LEVEL=debug` (MCP server and/or relay) to see full message traffic. Debug payloads are truncated, but logs may still reference your design content — leave it off in normal use.
+   ```bash
+   FIGMA_SOCKET_ALLOWED_ORIGINS="http://localhost:5173" bun run socket
+   ```
 
-## Connection issues
+   Rejected requests are logged by the relay as `Rejected request from disallowed origin`.
+3. **Personal access token.** A token grants REST access to every file the account can open. Store it in the DXT keychain field or an environment variable rather than in a shared `mcp.json`. The server sends it only in the `X-Figma-Token` header and removes it from error messages. Revoke it in **Figma > Settings > Security**.
+4. **Debug logging.** `LOG_LEVEL=debug` logs message traffic for the MCP server, the relay, or both. Payloads are truncated, but logs can still contain design content. Leave it unset in normal use.
 
-### "Cannot connect to WebSocket"
+## 2. Connection errors
 
-**Cause:** The server is not running.
+### 2.1 "Could not connect to the Figma socket server"
 
-**Solution:**
-1. Open a terminal
-2. Run `npx claude-talk-to-figma-mcp`
-3. Verify it's working at `http://localhost:3055/status`
+**Cause:** the MCP server could not reach the relay within 15 seconds.
 
-### "Plugin not found"
+**Resolution:**
 
-**Cause:** The plugin is not correctly imported in Figma.
+1. Start the relay: `bun run socket` in the project folder, or `npx claude-talk-to-figma-mcp`.
+2. Confirm that `http://localhost:3055/status` responds.
+3. If the relay uses a different port, pass the same `--port=` to the MCP server.
 
-**Solution:**
-1. In Figma: Menu → Plugins → Development → Import plugin from manifest
-2. Select `manifest.json` from the `src/claude_mcp_plugin/` folder
-3. Restart Figma if necessary
+### 2.2 "No Figma plugin is connected"
 
-### "MCP not available"
+**Cause:** the relay is running but no plugin is connected to it.
 
-**Claude Desktop:**
-1. Download the latest version of `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/Alkaness/talk-to-figma-mcp/releases).
-2. Double-click the file to launch it. Claude Desktop will install and configure it automatically.
-3. Restart Claude Desktop and verify that "ClaudeTalkToFigma" appears in the MCPs menu.
+**Resolution:** open the Figma file, run the plugin and click **Connect**.
 
-**Cursor:**
-1. Go to Settings → Tools & MCP
-2. Click on New MCP Server
-3. Verify that the configuration in `mcp.json` is correct
-```json
-{
-   "mcpServers": {
-      "ClaudeTalkToFigma": {
-         "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
-      },
-      "another MCP": {},
-      "etc": {}
-   }
-}
-```
-4. Restart Cursor
+### 2.3 "N Figma plugins are connected, so auto-routing is ambiguous"
 
+**Cause:** more than one Figma file has the plugin connected.
 
-## Execution issues
+**Resolution:** tell the agent which file to use and give it the channel ID shown in that file's plugin window. The agent then calls `join_channel`.
 
-### "Command failed"
+### 2.4 "A Figma plugin is connected but has not joined a channel yet"
 
-**Cause:** Error during command execution in Figma.
+**Resolution:** click **Connect** in the plugin and retry.
 
-**Solution:**
-1. Open the Figma development console (Menu → Plugins → Development → Show/Hide console)
-2. Check error messages
-3. Verify that you have editing permissions on the document
+### 2.5 "Figma plugin disconnected while processing command"
 
-### "Font not found"
+The same cause also produces "Figma plugin disconnected before the command could run".
 
-**Cause:** The requested font is not available in Figma.
+**Cause:** the plugin was closed, Figma reloaded, or the connection dropped. Every pending command is rejected immediately.
 
-**Solution:**
-1. Use `load_font_async` to check availability
-2. Some team fonts require manual loading in Figma
-3. Use an available alternative font
+**Resolution:** reopen the plugin, click **Connect** and repeat the request. The plugin reconnects on its own after a relay restart.
 
-### "Permission denied"
+### 2.6 The plugin does not appear in Figma
 
-**Cause:** You don't have editing permissions on the document.
+**Resolution:**
 
-**Solution:**
-1. Verify that you have edit access (not just view-only)
-2. If it's a team file, contact the administrator
+1. Open **Menu > Plugins > Development > Import plugin from manifest**.
+2. Select `src/claude_mcp_plugin/manifest.json`.
+3. Restart Figma if the plugin still does not appear.
 
-### "Timeout error"
+### 2.7 The MCP server does not appear in the client
 
-**Cause:** Complex operations may take longer than expected.
+**Resolution:**
 
-**Solution:**
-1. Try again
-2. Break the operation into smaller steps
-3. In large documents, work with specific selections
+1. Compare the client configuration with [Installation, section 4](INSTALLATION.md#4-configure-the-mcp-client). The server entry must sit inside the existing `mcpServers` object (`servers` in VS Code), next to any other servers.
+2. For Claude Desktop, reinstall the latest `.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases).
+3. Restart the client.
 
-## REST API (personal access token) issues
+## 3. Execution errors
 
-### "No Figma personal access token is configured"
+### 3.1 "\<command\> requires a parentId parameter"
 
-**Cause:** A `rest_*` tool was called but no token is set.
+**Cause:** creation commands must name their parent. Several agents can edit the same file, so the server does not rely on the current page.
 
-**Solution:**
-1. Create a token in Figma → Settings → Security → Personal access tokens.
-2. Set it as `FIGMA_PERSONAL_TOKEN` for the MCP server (DXT settings field, or an `env` block — see [Installation](INSTALLATION.md)).
-3. Restart your AI client, then run `rest_whoami` to confirm.
+**Resolution:** pass a page ID (from `get_pages`) or a frame ID as `parentId`.
 
-### "The Figma personal access token is invalid or has been revoked" (401)
+### 3.2 "\<command\> is a stateful command and is not allowed through the relay server"
 
-**Cause:** The token is wrong, expired, or revoked.
+**Cause:** `set_current_page` is blocked, including inside `batch_operations`.
 
-**Solution:** Generate a new token and update `FIGMA_PERSONAL_TOKEN`. The `rest_*` tools only appear when a token is present, so if they're missing entirely, the variable isn't reaching the server.
+**Resolution:** use `parentId` to target a page instead.
 
-### "The token does not grant access to this resource" (403)
+### 3.3 "Request to Figma timed out"
 
-**Cause:** The token's user can't see the file, or the token lacks the needed scope.
+**Cause:** the relay cancels a command after 120 seconds without progress from the plugin. The timer restarts whenever the plugin reports progress.
 
-**Solution:** Confirm the token's Figma account has access to the file, and that the token has **File content** (reads) and **Comments** (for `rest_post_comment`) scopes.
+**Resolution:**
 
-### "rate limit reached" (429)
+1. Split the request into smaller steps.
+2. Use `batch_operations` for edits to many nodes. It reports progress, so it does not time out while it keeps working.
+3. In large documents, work on a specific selection or page.
 
-**Cause:** Too many REST calls in a short window. The server already retries with `Retry-After`/backoff; this message means retries were exhausted.
+### 3.4 Other command failures
 
-**Solution:** Wait a minute, then retry. Prefer `rest_render_image` with specific node IDs over rendering whole files repeatedly.
+**Resolution:**
 
-## Performance issues
+1. Open the Figma console: **Menu > Plugins > Development > Show/Hide console**.
+2. Read the error message there.
+3. Confirm that the account has edit access to the file. View-only access rejects every change.
 
-### Slow responses
+### 3.5 Font not available
 
-**Cause:** Very large documents require more processing time.
+**Resolution:**
 
-**Solution:**
-1. Work on specific pages, not the entire document
-2. Close Figma tabs you're not using
-3. Restart Figma if it has been open for a long time
+1. Call `load_font_async` to check whether the font can be loaded.
+2. Team fonts may need to be loaded manually in Figma first.
+3. Use an available alternative.
 
-### WebSocket disconnections
+## 4. REST API errors
 
-**Cause:** The server lost the connection.
+### 4.1 "No Figma personal access token is configured"
 
-**Solution:**
-1. The server attempts to reconnect automatically
-2. If it persists, restart the server: `npx claude-talk-to-figma-mcp`
-3. Reconnect the channel from the plugin
+**Resolution:**
 
-### High memory usage
+1. Create a token in **Figma > Settings > Security > Personal access tokens**.
+2. Provide it as `FIGMA_PERSONAL_TOKEN` (see [Installation, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)).
+3. Restart the client and run `rest_whoami`.
 
-**Cause:** Prolonged sessions or complex documents.
+### 4.2 "The Figma personal access token is invalid or has been revoked" (HTTP 401)
 
-**Solution:**
-1. Close unnecessary Figma tabs
-2. Restart Figma periodically
-3. Restart the server if necessary
+**Resolution:** generate a new token and update `FIGMA_PERSONAL_TOKEN`. If the `rest_*` tools are missing entirely, the variable is not reaching the MCP server.
 
-## General solutions
+### 4.3 "The token does not grant access to this resource" (HTTP 403)
 
-### Restart sequence
+**Resolution:** confirm that the token's account can open the file and that the token has the **File content** read scope (and **Comments** write for `rest_post_comment`).
 
-When nothing works, follow this order:
+### 4.4 "rate limit reached" (HTTP 429)
 
-1. Stop the server (Ctrl+C in the terminal)
-2. Close your MCP client (Claude, Cursor, etc.)
-3. Close Figma
-4. Start the server: `npx claude-talk-to-figma-mcp`
-5. Open Figma and the plugin
-6. Open your MCP client
-7. Connect the channel
+**Cause:** the server already retried using `Retry-After` or exponential backoff, and the retries ran out.
 
-### Clean reinstall
+**Resolution:** wait one minute and retry. Render specific node IDs with `rest_render_image` instead of whole files.
 
-If issues persist:
+## 5. Performance
+
+| Symptom | Resolution |
+|---|---|
+| Slow responses in large documents | Work on a page or selection instead of the whole document. `get_node_info` and `get_nodes_info` default to `depth=1`; raise it only when needed. |
+| Frequent disconnections | The MCP server reconnects with backoff up to 30 seconds, and the plugin reconnects after relay restarts. If it continues, restart the relay. |
+| High memory use in Figma | Close unused Figma tabs and restart Figma after long sessions. |
+
+## 6. General procedures
+
+### 6.1 Restart sequence
+
+1. Stop the relay (`Ctrl+C`).
+2. Close the MCP client.
+3. Close Figma.
+4. Start the relay.
+5. Open Figma, run the plugin and click **Connect**.
+6. Open the MCP client.
+
+### 6.2 Clean reinstall (source checkout)
 
 ```bash
-# If you cloned the repository
 rm -rf node_modules
 bun install
-bun run build  # or bun run build:win on Windows
+bun run build   # bun run build:win on Windows
 ```
 
-### Port conflicts
+### 6.3 Port 3055 already in use
 
-If port 3055 is occupied:
+1. Find the process:
+   - macOS and Linux: `lsof -i :3055`
+   - Windows: `netstat -ano | findstr :3055`
+2. Stop that process, or run the relay on another port with `--port=` and pass the same port to the MCP server.
 
-1. Identify which process is using it:
-   - **macOS/Linux:** `lsof -i :3055`
-   - **Windows:** `netstat -ano | findstr :3055`
-2. Close that process or restart your computer
+## 7. Reporting an issue
 
-## Still having issues?
+Check the [open issues](https://github.com/Alkaness/talk-to-figma-mcp/issues) first. A new issue should include:
 
-1. Check the [open issues](https://github.com/Alkaness/talk-to-figma-mcp/issues) on GitHub
-2. Open a new issue with:
-   - Problem description
-   - Steps to reproduce
-   - Operating system
-   - MCP client you're using
-   - Error messages (if any)
+1. A description of the problem.
+2. Steps to reproduce it.
+3. Operating system.
+4. MCP client and version.
+5. The exact error message.
