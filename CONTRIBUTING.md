@@ -45,6 +45,18 @@ src/
     manifest.json           # Plugin configuration
 ```
 
+## Invariants
+
+Rules that past bugs depend on. Each is also commented where it lives in the code.
+
+- **Relay disconnect order** (`src/socket.ts`, close handler): `cleanupClient()` must run *before* empty channels are removed. In zero-config mode the plugin is alone in its channel, so deleting the channel first drops the error flush and the agent hangs until timeout. Covered by `tests/unit/relay-disconnect.test.ts`.
+- **No side effects on import** (`src/socket.ts`): the relay only starts through `startRelay()` behind `isMainModule()`. Tests import the module, so don't add top-level `Bun.serve` or timers.
+- **Origin allowlist**: the relay has no auth, so the Origin check (no Origin, `null`, `*.figma.com`, plus `FIGMA_SOCKET_ALLOWED_ORIGINS`) is all that stops any open web page from driving the user's Figma file. Don't loosen it. See [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+- **Command names** live in `src/shared/commands.ts` (used by the MCP server, relay and tests). A new command goes there *and* in `handleCommand` in `code.js`.
+- **Plugin results**: validate with `parseCommandResult()` and a schema in `utils/command-results.ts` only when the result feeds logic. Display-only results stay unvalidated on purpose; add a schema when that changes.
+- **`parentId` is required** in creation tool schemas. The relay enforces it too.
+- **Logging**: use `logger` from `utils/logger.ts` (stderr only; stdout belongs to MCP). Debug is gated by `LOG_LEVEL=debug`. Never log whole payloads (snapshots are multi-MB base64); use `truncateForLog()`.
+
 ## Environment setup
 
 ```bash
@@ -103,7 +115,9 @@ Add (or modify) the entry in `mcpServers` pointing to your locally built file:
 ### Automated tests
 
 ```bash
-bun run test            # Run all tests
+bun run test            # Jest suite
+bun run test:socket     # Relay tests (bun:test, excluded from jest)
+bun run test:all        # Typecheck + both of the above
 bun run test:watch      # Watch mode
 bun run test:coverage   # Coverage report
 ```

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.4.0] - 2026-06-12
 
-Implements the full backlog from the architectural review (`ARCH_REVIEW.md`), and adds optional Figma REST API access via a personal access token.
+Implements the full backlog from the June 2026 architectural review (invariants now in [CONTRIBUTING.md](CONTRIBUTING.md#invariants); deferred items tracked as GitHub issues), and adds optional Figma REST API access via a personal access token.
 
 ### Added — Figma REST API (optional, personal access token)
 - **New tools, gated on `FIGMA_PERSONAL_TOKEN`** (they don't appear without a token, keeping plugin-only setups clean): `rest_whoami`, `rest_get_file`, `rest_render_image`, `rest_get_comments`, `rest_post_comment`. These work **without the plugin or an open Figma session**, against **any file the token's user can access**, addressed by figma.com URL or file key (URLs' `node-id` is parsed automatically; branch URLs supported).
