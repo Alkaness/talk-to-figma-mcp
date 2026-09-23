@@ -76,7 +76,7 @@ export function registerRestTools(server: McpServer): void {
     "rest_get_file",
     {
       description:
-        "Read a Figma file's structure via the REST API — works WITHOUT the plugin or an open Figma session, for ANY file the token's user can access. Pass a figma.com URL (its node-id is used automatically) or a file key. Returns the filtered node tree to the requested depth (deeper levels become id/name/type stubs). Read-only: use plugin tools to modify the open file.",
+        "Read a Figma file's structure via the REST API — works WITHOUT the plugin or an open Figma session, for ANY file the token's user can access. Pass a figma.com URL (its node-id is used automatically) or a file key. Returns the node tree in the same format as get_node_info (auto-layout, sizing, visibility, strokes, effects, text runs) to the requested depth; deeper levels become id/name/type stubs. Read-only: use plugin tools to modify the open file.",
       inputSchema: {
         file: fileParam,
         nodeId: z.string().optional().describe('Node to read (e.g. "12:34"). Overrides the URL\'s node-id. Omit to read the file root (pages).'),

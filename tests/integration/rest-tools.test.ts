@@ -34,6 +34,7 @@ jest.mock("../../src/talk_to_figma_mcp/utils/figma-rest", () => ({
 }));
 
 import { registerRestTools } from "../../src/talk_to_figma_mcp/tools/rest-tools";
+import { pricingCardNode } from "../fixtures/rest-nodes";
 
 const handlers = new Map<string, { handler: Function; schema: z.ZodObject<any> }>();
 
@@ -110,6 +111,22 @@ describe("rest_get_file", () => {
     const result = await call("rest_get_file", { file: "KEY", nodeId: "12:34", depth: 1 });
     expect(mockGetNodes).toHaveBeenCalledWith("KEY", ["12:34"], 2);
     expect(result.structuredContent.node.name).toBe("Card");
+  });
+
+  it("returns layout and text data in the same format as get_node_info", async () => {
+    makeServer();
+    mockGetNodes.mockResolvedValue({
+      name: "My File",
+      lastModified: "2026-01-01",
+      nodes: { "10:1": { document: pricingCardNode() } },
+    });
+
+    const result = await call("rest_get_file", { file: "KEY", nodeId: "10:1", depth: 1 });
+    const node = result.structuredContent.node;
+    expect(node).toMatchObject({ layoutMode: "VERTICAL", itemSpacing: 16, strokeWeight: 1 });
+    const price = node.children.find((c: any) => c.name === "Price");
+    expect(price.textRuns).toHaveLength(2);
+    expect(node.children.find((c: any) => c.name === "Old price").visible).toBe(false);
   });
 
   it("flags a missing node as an error", async () => {

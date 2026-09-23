@@ -7,6 +7,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **`get_node_info`, `get_nodes_info` and `rest_get_file` no longer discard layout and styling.** The node filter kept 10 properties and dropped the rest. Agents therefore had to infer auto-layout from coordinates, rendered hidden layers, merged mixed-style text into one style, and lost stroke weights, per-corner radii, effects, opacity and clipping. The tree now includes:
+  1. Auto-layout and child sizing: `layoutMode`, padding, `itemSpacing`, alignment, sizing modes, `layoutSizingHorizontal`/`layoutSizingVertical`, `layoutPositioning` and constraints.
+  2. `visible: false` stubs for hidden layers.
+  3. Clipping, opacity and blend mode.
+  4. Stroke weight, alignment and dashes, and `rectangleCornerRadii`.
+  5. Effects.
+  6. The full text style, with `textRuns` for mixed-style text.
+  7. `imageRef` on image fills.
+  8. `parentOffset`, the position relative to the parent's bounding box.
+
+  Values equal to Figma's defaults are omitted, and lengths are rounded to 2 decimals. The change is in the MCP server only; the plugin does not need to be re-imported.
+- **`get_node_info` on a vector node** returned an error, because vector nodes were removed from the tree. They are now returned like other nodes.
+
+### Changed
+- The `export-to-tailwind` and `read_design_strategy` prompts and the `get_node_info`, `get_nodes_info`, `get_css` and `rest_get_file` descriptions now describe the fields above.
+
 ## [1.5.0] - 2026-09-23
 
 First release of the standalone repository [Alkaness/talk-to-figma-mcp](https://github.com/Alkaness/talk-to-figma-mcp).

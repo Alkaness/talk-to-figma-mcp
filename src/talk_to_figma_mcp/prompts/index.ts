@@ -124,6 +124,18 @@ Example Login Screen Structure:
 2. Get node infos of the selected nodes:
    - Use get_nodes_info() to get the information of the selected nodes
    - If no selection ask user to select single or multiple nodes
+
+3. Read deep enough:
+   - get_node_info() and get_nodes_info() return one level of children by default
+   - Pass a larger depth (for example 8) to read a whole card or section in one call
+   - Children beyond the depth are id/name/type stubs, and their parent is marked _childrenTruncated
+
+4. Read the layout from the properties, not from the coordinates:
+   - Auto-layout frames carry layoutMode, padding, itemSpacing, alignment and sizing modes
+   - Children carry layoutSizingHorizontal/Vertical (FIXED, HUG or FILL) and layoutPositioning
+   - parentOffset is each node's position relative to its parent's bounding box
+   - Nodes with visible: false are hidden in the design
+   - Mixed-style text has textRuns; image fills have imageRef (pass it to get_asset as hash)
 `,
             },
           },
@@ -329,12 +341,17 @@ Produce a prioritized list grouped by severity (Critical / Serious / Minor), eac
 
 ## Step 1 — Read the design accurately
 - Read figma://local/selection (or call get_selection()); if nothing is selected, ask the user to select a frame and stop.
-- Call get_node_info()/get_nodes_info() to read the full node tree: sizes, positions, fills, strokes, corner radii, effects, and especially **auto-layout** (layoutMode, padding, itemSpacing, alignment).
-- Use get_styled_text_segments() for fonts, weights, sizes, line-height, letter-spacing, and colors.
+- Call get_node_info()/get_nodes_info() with a depth that covers the whole selection (for example 8) to read the full node tree: sizes, positions, fills, strokes, corner radii, effects, and especially **auto-layout** (layoutMode, padding, itemSpacing, alignment, layoutSizingHorizontal/Vertical).
+- Nodes marked \`visible: false\` are hidden in the design: do not render them.
+- Text nodes carry their full style (font, weight, size, line-height, letter-spacing, textCase, textDecoration) and, for mixed-style text, \`textRuns\` with the per-range overrides.
 - Call get_visual_snapshot() and use it as ground truth — verify your output matches what you SEE (placement and fonts), since JSON alone misses visual nuance.
 
 ## Step 2 — Map Figma → Tailwind
 - **Auto-layout → flexbox**: HORIZONTAL → \`flex\`, VERTICAL → \`flex flex-col\`; itemSpacing → \`gap-*\`; padding → \`p-*\`/\`px-*\`/\`py-*\`; primary/counter axis alignment → \`justify-*\`/\`items-*\`.
+- **Child sizing**: layoutSizingHorizontal/Vertical FILL along the parent's layout direction → \`flex-1\`, across it → \`self-stretch\`; HUG → size to content; FIXED → \`w-[Npx]\`/\`h-[Npx]\`.
+- **Absolute children**: layoutPositioning ABSOLUTE → \`absolute\` at the node's parentOffset, with \`relative\` on the parent. Frames without layoutMode have no flex data: derive gaps and padding from the children's parentOffset and sizes.
+- **Text runs and case**: render each \`textRuns\` entry as a \`<span>\` with its overrides; textCase UPPER → \`uppercase\`, LOWER → \`lowercase\`, TITLE → \`capitalize\`.
+- **Assets**: image fills carry imageRef → save them with get_asset({ hash: imageRef }); VECTOR nodes → get_asset({ nodeId }) for the SVG.
 - **Spacing/sizing**: snap px to the nearest Tailwind scale step (4px = 1 unit); use exact values via arbitrary syntax (\`w-[437px]\`) only when no close step exists.
 - **Colors**: map fills/strokes to the closest Tailwind palette token; fall back to arbitrary \`bg-[#RRGGBB]\` when there's no good match. Note these as candidate design tokens.
 - **Typography**: map font-size/weight/line-height/tracking to \`text-*\`, \`font-*\`, \`leading-*\`, \`tracking-*\`; include the font-family.

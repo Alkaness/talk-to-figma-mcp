@@ -33,8 +33,8 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 |---|---|
 | `get_document_info` | Returns detailed information about the current document. |
 | `get_selection` | Returns information about the current selection. |
-| `get_node_info` | Returns detailed information about one node, including `absoluteBoundingBox` and `localPosition`. Accepts a `depth` limit. |
-| `get_nodes_info` | Returns detailed information about several nodes, exported in batches of 5. Accepts a `depth` limit. |
+| `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). |
+| `get_nodes_info` | Returns several nodes in the same format as `get_node_info`, exported in batches of 5. Accepts a `depth` limit. |
 | `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection; `recursive=true` covers the subtree. |
 | `get_styles` | Returns all local styles in the document. |
 | `get_local_components` | Returns all local components. |
@@ -198,7 +198,7 @@ These tools are registered only when `FIGMA_PERSONAL_TOKEN` is set (see [Install
 | Tool | Description |
 |---|---|
 | `rest_whoami` | Returns the handle and email of the token's owner. |
-| `rest_get_file` | Returns a file's node tree up to the requested depth. |
+| `rest_get_file` | Returns a file's node tree up to the requested depth, in the same format as `get_node_info`. |
 | `rest_render_image` | Renders nodes to PNG, JPG or SVG on Figma's servers, saves them to disk and returns the first raster image inline. |
 | `rest_get_comments` | Lists a file's comments with author, message, anchored node and resolved state. |
 | `rest_post_comment` | Posts a comment or a reply, optionally anchored to a node. |
@@ -227,13 +227,15 @@ The token is read once from the environment, sent only in the `X-Figma-Token` he
 1. **`parentId` is required** on every creation command. Pass a page ID (from `get_pages`) or a frame ID. Several agents can edit the same file at once, so the server never relies on the "current page".
 2. **Coordinates are local.** `move_node` and all creation tools use coordinates relative to the parent. `get_node_info` returns both:
    - `absoluteBoundingBox`: position relative to the canvas origin.
-   - `localPosition`: position relative to the parent. Use this with `move_node`.
+   - `localPosition`: position relative to the parent. Use this with `move_node`. It is returned for the requested node only.
+   - `parentOffset`: returned for every child node. It is the position of the child's bounding box relative to its parent's bounding box, for CSS `left` and `top`. Inside a group it differs from the `move_node` coordinates, because the children of a group are positioned relative to the group's parent.
 
    ```
    Frame at (100, 50)
      Rectangle
        absoluteBoundingBox: { x: 150, y: 80 }   global
-       localPosition:       { x: 50,  y: 30 }   use with move_node
+       localPosition:       { x: 50,  y: 30 }   get_node_info on the rectangle; use with move_node
+       parentOffset:        { x: 50,  y: 30 }   get_node_info on the frame; use for CSS
    ```
 3. **Use `batch_operations`** for edits to 3 or more nodes. It avoids one round trip per node and reports each failure separately.
 

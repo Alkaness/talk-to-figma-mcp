@@ -84,10 +84,10 @@ export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
     "get_node_info",
     {
-      description: "Get detailed information about a specific node in Figma",
+      description: "Get a node and its subtree with the properties needed to reproduce it: auto-layout (layoutMode, padding, itemSpacing, alignment, sizing modes), child sizing (layoutSizingHorizontal/Vertical: FIXED, HUG or FILL), absolute positioning (layoutPositioning, constraints), parentOffset (position relative to the parent), clipping, opacity, fills and strokes as hex with stroke weight and alignment, per-corner radii, effects, and the full text style with textRuns for mixed-style text. Hidden layers are returned as visible:false stubs. Image fills carry imageRef, the hash that get_asset takes. Values equal to Figma's defaults are omitted. For Figma's Dev Mode CSS, use get_css.",
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to get information about"),
-      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs."),
+      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail (default 1). Deeper levels return only id/name/type stubs. Pass a larger value to read a whole card or section in one call."),
     },
       annotations: { readOnlyHint: true },
     },
@@ -99,7 +99,7 @@ export function registerDocumentTools(server: McpServer): void {
         const result = await sendCommandToFigma("get_node_info", { nodeId, depth: depth ?? 1 });
         const filtered = filterFigmaNode(result, depth ?? 1);
         const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
-          ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node)."
+          ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node). parentOffset on child nodes is the position relative to the parent's bounding box, for CSS left/top; inside a GROUP it differs from move_node coordinates."
           : undefined;
 
         const payload = coordinateNote ? { ...filtered, _note: coordinateNote } : filtered;
@@ -131,10 +131,10 @@ export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
     "get_nodes_info",
     {
-      description: "Get detailed information about multiple nodes in Figma",
+      description: "Get several nodes in the same format as get_node_info.",
       inputSchema: {
       nodeIds: coerceJson(z.array(z.string())).describe("Array of node IDs to get information about"),
-      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail. Deeper levels return only id/name/type stubs.")
+      depth: z.number().int().min(0).optional().describe("How many child levels to include in full detail (default 1). Deeper levels return only id/name/type stubs.")
     },
       annotations: { readOnlyHint: true },
     },
@@ -652,7 +652,7 @@ export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
     "get_css",
     {
-      description: "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Prefer this over reconstructing styles from get_node_info: it removes guesswork and is the most faithful source for 1:1 code. Defaults to the current selection. Use recursive=true to get CSS for the whole subtree.",
+      description: "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Use it alongside get_node_info: get_node_info returns the tree, the text and the Figma properties; get_css returns the CSS that Figma itself generates for each node. Defaults to the current selection. Use recursive=true to get CSS for the whole subtree (up to 200 nodes).",
       inputSchema: {
       nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
       recursive: coerceBoolean.optional().describe("If true, return CSS for the node and all descendants (capped). Default false."),
