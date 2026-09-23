@@ -48,8 +48,8 @@ src/
 ## Environment setup
 
 ```bash
-git clone https://github.com/arinspunk/claude-talk-to-figma-mcp.git
-cd claude-talk-to-figma-mcp
+git clone https://github.com/Alkaness/talk-to-figma-mcp.git
+cd talk-to-figma-mcp
 bun install
 ```
 

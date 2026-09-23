@@ -6,8 +6,8 @@ import path from 'path';
 import os from 'os';
 import readline from 'readline';
 
-const REPO_URL = 'https://github.com/arinspunk/claude-talk-to-figma-mcp.git';
-const FOLDER_NAME = 'claude-talk-to-figma-mcp';
+const REPO_URL = 'https://github.com/Alkaness/talk-to-figma-mcp.git';
+const FOLDER_NAME = 'talk-to-figma-mcp';
 
 const rl = readline.createInterface({
     input: process.stdin,

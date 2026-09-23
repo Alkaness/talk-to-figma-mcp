@@ -41,7 +41,7 @@ The relay (`localhost:3055`) gives full **read and write access to whatever Figm
 ### "MCP not available"
 
 **Claude Desktop:**
-1. Download the latest version of `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases).
+1. Download the latest version of `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/Alkaness/talk-to-figma-mcp/releases).
 2. Double-click the file to launch it. Claude Desktop will install and configure it automatically.
 3. Restart Claude Desktop and verify that "ClaudeTalkToFigma" appears in the MCPs menu.
 
@@ -195,7 +195,7 @@ If port 3055 is occupied:
 
 ## Still having issues?
 
-1. Check the [open issues](https://github.com/arinspunk/claude-talk-to-figma-mcp/issues) on GitHub
+1. Check the [open issues](https://github.com/Alkaness/talk-to-figma-mcp/issues) on GitHub
 2. Open a new issue with:
    - Problem description
    - Steps to reproduce

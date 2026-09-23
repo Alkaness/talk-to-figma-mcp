@@ -78,10 +78,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arinspunk/claude-talk-to-figma-mcp.git"
+    "url": "git+https://github.com/Alkaness/talk-to-figma-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/arinspunk/claude-talk-to-figma-mcp/issues"
+    "url": "https://github.com/Alkaness/talk-to-figma-mcp/issues"
   },
-  "homepage": "https://github.com/arinspunk/claude-talk-to-figma-mcp#readme"
+  "homepage": "https://github.com/Alkaness/talk-to-figma-mcp#readme"
 }

@@ -9,10 +9,10 @@
     "url": "https://github.com/arinspunk"
   },
   "license": "MIT",
-  "homepage": "https://github.com/arinspunk/claude-talk-to-figma-mcp",
+  "homepage": "https://github.com/Alkaness/talk-to-figma-mcp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/arinspunk/claude-talk-to-figma-mcp.git"
+    "url": "https://github.com/Alkaness/talk-to-figma-mcp.git"
   },
   "icon": "images/claude-talk-to-figma.png",
   "compatibility": {

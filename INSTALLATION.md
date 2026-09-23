@@ -49,8 +49,8 @@ If you prefer Docker or need to run the WebSocket server in a team environment, 
 #### 1. Clone and build
 
 ```bash
-git clone https://github.com/arinspunk/claude-talk-to-figma-mcp.git
-cd claude-talk-to-figma-mcp
+git clone https://github.com/Alkaness/talk-to-figma-mcp.git
+cd talk-to-figma-mcp
 docker build -t figma-websocket .
 ```
 
@@ -95,7 +95,7 @@ Once the server is running, you need to tell your AI tool how to find the MCP to
 
 #### Option A: DXT Package (easiest)
 
-1. Download `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases)
+1. Download `claude-talk-to-figma-mcp.dxt` from [releases](https://github.com/Alkaness/talk-to-figma-mcp/releases)
 2. Double-click the `.dxt` file → it installs automatically in Claude Desktop
 
 #### Option B: JSON Configuration

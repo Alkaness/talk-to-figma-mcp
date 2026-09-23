@@ -91,7 +91,7 @@ In Figma Desktop go to Menu → Plugins → Development → Import plugin from m
 
 #### Claude Desktop
 
-Download [claude-talk-to-figma-mcp.dxt](https://github.com/arinspunk/claude-talk-to-figma-mcp/releases) (from Assets section of the latest release) and double-click. Claude configures itself automatically.
+Download [claude-talk-to-figma-mcp.dxt](https://github.com/Alkaness/talk-to-figma-mcp/releases) (from Assets section of the latest release) and double-click. Claude configures itself automatically.
 
 #### Cursor
 
@@ -207,7 +207,7 @@ See [complete command list](COMMANDS.md).
 
 ## 🙏 Credits
 
-Based on [cursor-talk-to-figma-mcp](https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp) by Sonny Lazuardi. Adapted for Claude Desktop and extended with new tools by [Xúlio Zé](https://github.com/arinspunk).
+Based on [cursor-talk-to-figma-mcp](https://github.com/sonnylazuardi/cursor-talk-to-figma-mcp) by Sonny Lazuardi. Adapted for Claude Desktop and extended with new tools by [Xúlio Zé](https://github.com/arinspunk) in [claude-talk-to-figma-mcp](https://github.com/arinspunk/claude-talk-to-figma-mcp). This standalone repo continues from that project with zero-config routing, visual snapshots, fidelity tools and the Figma REST API by [Alkaness](https://github.com/Alkaness).
 
 If you want to know about all project contributions, you can visit the ["Contributors" chapter of the contribution guide](CONTRIBUTING.md#contributors).
 
@@ -225,6 +225,6 @@ If you want to know about all project contributions, you can visit the ["Contrib
 
 ### Need something specific?
 
-**[Propose new ones on GitHub Issues](https://github.com/arinspunk/claude-talk-to-figma-mcp/issues)**
+**[Propose new ones on GitHub Issues](https://github.com/Alkaness/talk-to-figma-mcp/issues)**
 
 Your feedback and contributions keep the project alive. ❤️
