@@ -24,8 +24,10 @@ export const serverUrl = serverArg ? serverArg.split('=')[1] : 'localhost';
 export const defaultPort = parsePositiveInt(portArg?.split('=')[1], 3055, '--port', 65535);
 export const reconnectInterval = parsePositiveInt(reconnectArg?.split('=')[1], 2000, '--reconnect-interval');
 
-// URL de WebSocket basada en el servidor (WS para localhost, WSS para remoto)
-export const WS_URL = serverUrl === 'localhost' ? `ws://${serverUrl}` : `wss://${serverUrl}`;
+// URL de WebSocket basada en el servidor (WS para localhost, WSS para remoto).
+// Local connections target 127.0.0.1 explicitly: the relay binds IPv4 loopback,
+// and "localhost" may resolve to ::1 first (macOS), which would be refused.
+export const WS_URL = serverUrl === 'localhost' ? 'ws://127.0.0.1' : `wss://${serverUrl}`;
 
 // Configuración del servidor MCP (Implementation info)
 export const SERVER_CONFIG = {

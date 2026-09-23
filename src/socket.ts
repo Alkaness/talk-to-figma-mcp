@@ -652,6 +652,8 @@ function isAllowedOrigin(origin: string | null): boolean {
 export interface RelayHandle {
   server: Server;
   port: number;
+  /** Interface the relay is bound to (loopback unless overridden). */
+  hostname: string;
   /** Stop the server and all periodic timers (used by tests). */
   stop(): void;
 }
@@ -664,7 +666,9 @@ export interface RelayHandle {
 export function startRelay(opts: { port?: number; hostname?: string } = {}): RelayHandle {
   const server = Bun.serve({
     port: opts.port ?? 3055,
-    ...(opts.hostname ? { hostname: opts.hostname } : {}),
+    // Always pass a hostname: Bun's own default binds every interface, which
+    // would expose this unauthenticated relay to the whole network.
+    hostname: opts.hostname ?? "127.0.0.1",
   fetch(req: Request, server: Server) {
     const url = new URL(req.url);
 
@@ -1204,12 +1208,13 @@ export function startRelay(opts: { port?: number; hostname?: string } = {}): Rel
     });
   }, 5 * 60 * 1000);
 
-  logger.info(`Claude to Figma WebSocket server running on port ${server.port}`);
+  logger.info(`Claude to Figma WebSocket server running on ${server.hostname}:${server.port}`);
   logger.info(`Status endpoint available at http://localhost:${server.port}/status`);
 
   return {
     server,
     port: server.port as number,
+    hostname: server.hostname as string,
     stop() {
       clearInterval(heartbeatTimer);
       clearInterval(staleSweepTimer);
@@ -1249,9 +1254,10 @@ if (isMainModule()) {
   const portArg = process.argv.find((a) => a.startsWith("--port="));
   const port = parsePort(portArg?.split("=")[1]) ?? parsePort(process.env.FIGMA_SOCKET_PORT) ?? 3055;
 
-  // Optional: bind to 0.0.0.0 (e.g. Windows WSL) via FIGMA_SOCKET_HOST=0.0.0.0.
-  // WARNING: this exposes the relay beyond localhost — only do this on a trusted
-  // network (the origin allowlist does not protect against non-browser clients).
+  // Binds to 127.0.0.1 by default. FIGMA_SOCKET_HOST=0.0.0.0 is required inside
+  // Docker and for Windows + WSL. WARNING: that exposes the relay beyond this
+  // machine — only do it on a trusted network (the origin allowlist does not
+  // protect against non-browser clients).
   const hostname = process.env.FIGMA_SOCKET_HOST || undefined;
 
   startRelay({ port, hostname });

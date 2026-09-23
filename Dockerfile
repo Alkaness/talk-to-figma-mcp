@@ -14,6 +14,11 @@ RUN bun install
 COPY src ./src
 COPY tsconfig.json ./
 
+# Listen on all container interfaces (the relay defaults to 127.0.0.1, which
+# is unreachable through Docker port publishing). Publish with
+# -p 127.0.0.1:3055:3055 to keep it local to the host.
+ENV FIGMA_SOCKET_HOST=0.0.0.0
+
 # Expose WebSocket port
 EXPOSE 3055
 

@@ -15,7 +15,7 @@ The relay (`localhost:3055`) gives full **read and write access to whatever Figm
   FIGMA_SOCKET_ALLOWED_ORIGINS="http://localhost:5173" bun run socket
   ```
   A blocked request logs `Rejected request from disallowed origin …` on the relay.
-- **Don't bind beyond localhost casually.** `FIGMA_SOCKET_HOST=0.0.0.0` exposes the relay to your network, and the origin allowlist does **not** protect against non-browser clients. Only use it on a trusted network (e.g. Windows + WSL setups).
+- **The relay listens on `127.0.0.1` only.** `FIGMA_SOCKET_HOST=0.0.0.0` exposes it to your network, and the origin allowlist does **not** protect against non-browser clients. Set it only on a trusted network; it is required for Windows + WSL setups (the Docker image sets it inside the container).
 - **Debug logging is opt-in.** Set `LOG_LEVEL=debug` (MCP server and/or relay) to see full message traffic. Debug payloads are truncated, but logs may still reference your design content — leave it off in normal use.
 
 ## Connection issues

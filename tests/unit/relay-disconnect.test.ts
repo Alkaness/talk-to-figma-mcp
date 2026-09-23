@@ -12,6 +12,11 @@
  *  2. A1 — origin allowlist: browser origins outside the allowlist are rejected
  *     (CSWSH protection), while non-browser clients (no Origin), the sandboxed
  *     plugin iframe ("null"), and figma.com keep working.
+ *
+ *  3. Loopback bind: without an explicit hostname the relay must listen on
+ *     127.0.0.1 only. Bun's default binds every interface, which let any host
+ *     on the network drive the open Figma file (the origin check only stops
+ *     browsers).
  */
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
 import { startRelay, RelayHandle } from "../../src/socket";
@@ -28,7 +33,7 @@ afterAll(() => {
 
 function connect(): Promise<WebSocket> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://localhost:${relay.port}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${relay.port}`);
     ws.onopen = () => resolve(ws);
     ws.onerror = (e) => reject(e);
     setTimeout(() => reject(new Error("Connection timeout")), 5000);
@@ -155,17 +160,17 @@ describe("zero-config plugin disconnect (C1 regression)", () => {
 
 describe("origin allowlist (A1 / CSWSH protection)", () => {
   it("serves /status to non-browser clients (no Origin header)", async () => {
-    const res = await fetch(`http://localhost:${relay.port}/status`);
+    const res = await fetch(`http://127.0.0.1:${relay.port}/status`);
     expect(res.status).toBe(200);
   });
 
   it("allows the sandboxed plugin iframe origin \"null\" and figma.com", async () => {
-    const nullOrigin = await fetch(`http://localhost:${relay.port}/status`, {
+    const nullOrigin = await fetch(`http://127.0.0.1:${relay.port}/status`, {
       headers: { origin: "null" },
     });
     expect(nullOrigin.status).toBe(200);
 
-    const figma = await fetch(`http://localhost:${relay.port}/status`, {
+    const figma = await fetch(`http://127.0.0.1:${relay.port}/status`, {
       headers: { origin: "https://www.figma.com" },
     });
     expect(figma.status).toBe(200);
@@ -173,9 +178,15 @@ describe("origin allowlist (A1 / CSWSH protection)", () => {
   });
 
   it("rejects requests from arbitrary web origins with 403", async () => {
-    const res = await fetch(`http://localhost:${relay.port}/status`, {
+    const res = await fetch(`http://127.0.0.1:${relay.port}/status`, {
       headers: { origin: "https://evil.example" },
     });
     expect(res.status).toBe(403);
+  });
+});
+
+describe("network exposure", () => {
+  it("binds to IPv4 loopback by default", () => {
+    expect(relay.hostname).toBe("127.0.0.1");
   });
 });

@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **Relay binds to `127.0.0.1` by default**: Bun's default bind address is every interface, so the unauthenticated relay was reachable from the local network and any host on it could read or modify the open Figma file (the origin allowlist only stops browsers). `FIGMA_SOCKET_HOST=0.0.0.0` restores network access and is now required for Windows + WSL; the Docker image sets it inside the container. The MCP server now connects to `ws://127.0.0.1` to match.
+
 ## [1.4.0] - 2026-06-12
 
 Implements the full backlog from the June 2026 architectural review (invariants now in [CONTRIBUTING.md](CONTRIBUTING.md#invariants); deferred items tracked as GitHub issues), and adds optional Figma REST API access via a personal access token.
