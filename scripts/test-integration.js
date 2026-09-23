@@ -133,10 +133,10 @@ async function checkClaudeConfig() {
     }
     
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    if (config.mcpServers && config.mcpServers['ClaudeTalkToFigma']) {
-      log.success('ClaudeTalkToFigma configuration found in Claude Desktop');
+    if (config.mcpServers && config.mcpServers['TalkToFigma']) {
+      log.success('TalkToFigma configuration found in Claude Desktop');
     } else {
-      log.warning('ClaudeTalkToFigma is not configured in Claude Desktop');
+      log.warning('TalkToFigma is not configured in Claude Desktop');
       const shouldConfigure = await askQuestion('Do you want to configure Claude Desktop now? (y/n)');
       
       if (shouldConfigure.toLowerCase() === 'y') {
@@ -304,7 +304,7 @@ async function runIntegrationTests() {
   
   log.info('\nTo complete integration tests, follow these steps:');
   log.info('1. Open Claude Desktop');
-  log.info('2. Select "ClaudeTalkToFigma" in the MCP selector');
+  log.info('2. Select "TalkToFigma" in the MCP selector');
   log.info('3. Open Figma and run the Claude MCP Plugin from your Development plugins');
   log.info('4. In the plugin, connect to WebSocket server (port 3055)');
   log.info('5. Test these commands in Claude:');

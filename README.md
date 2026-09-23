@@ -34,21 +34,21 @@ The full guide, including every client, is in [INSTALLATION.md](INSTALLATION.md)
 1. **Start the relay.** In the folder where the project should be installed, run:
 
    ```bash
-   npx claude-talk-to-figma-mcp
+   npx @alkaness/talk-to-figma-mcp
    ```
 
    The launcher clones the repository, installs dependencies and starts the relay on `127.0.0.1:3055`. In later sessions, run `bun run socket` inside the project folder.
 
 2. **Install the plugin.** In Figma Desktop, open **Menu > Plugins > Development > Import plugin from manifest** and select `src/claude_mcp_plugin/manifest.json` from the project folder.
 
-3. **Configure the MCP client.** For Claude Desktop, install `claude-talk-to-figma-mcp.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases). For other clients, add this server entry (file locations are listed in [INSTALLATION.md, section 4](INSTALLATION.md#4-configure-the-mcp-client)):
+3. **Configure the MCP client.** For Claude Desktop, install `talk-to-figma-mcp.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases). For other clients, add this server entry (file locations are listed in [INSTALLATION.md, section 4](INSTALLATION.md#4-configure-the-mcp-client)):
 
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+         "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
        }
      }
    }

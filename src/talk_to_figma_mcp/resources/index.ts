@@ -25,7 +25,7 @@ async function readFigmaResource(
   } catch (error) {
     payload = {
       error: error instanceof Error ? error.message : String(error),
-      hint: "Ensure the Claude Talk to Figma plugin is open and connected.",
+      hint: "Ensure the Talk to Figma plugin is open and connected.",
     };
     logger.warn(`Resource ${uriHref} read failed: ${(payload as any).error}`);
   }

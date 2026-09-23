@@ -27,7 +27,7 @@ The relay gives full read and write access to the Figma file that has the plugin
 
 **Resolution:**
 
-1. Start the relay: `bun run socket` in the project folder, or `npx claude-talk-to-figma-mcp`.
+1. Start the relay: `bun run socket` in the project folder, or `npx @alkaness/talk-to-figma-mcp`.
 2. Confirm that `http://localhost:3055/status` responds.
 3. If the relay uses a different port, pass the same `--port=` to the MCP server.
 

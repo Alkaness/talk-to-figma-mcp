@@ -120,7 +120,7 @@ function resolveTargetChannel(
     return {
       error:
         "No Figma plugin is connected. Tell the user to open their Figma file, " +
-        "run the \"Claude Talk to Figma\" plugin, and click Connect.",
+        "run the \"Talk to Figma\" plugin, and click Connect.",
     };
   }
 

@@ -19,6 +19,8 @@ const configPath = os.platform() === 'darwin'
 const packageJsonPath = path.join(__dirname, '..', 'package.json');
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
 const packageName = packageJson.name;
+// Bin names carry no npm scope: @scope/name ships the name-server bin.
+const binBase = packageName.replace(/^@[^/]+\//, '');
 const packageVersion = packageJson.version;
 
 console.log(`Configuring Claude Desktop for ${packageName} v${packageVersion}...`);
@@ -67,13 +69,13 @@ try {
 // Add MCP configuration
 // Use -p to install the package, then run the server binary (not the launcher)
 config.mcpServers = config.mcpServers || {};
-config.mcpServers['ClaudeTalkToFigma'] = {
+config.mcpServers['TalkToFigma'] = {
   command: 'npx',
-  args: ['-p', `${packageName}@latest`, `${packageName}-server`]
+  args: ['-p', `${packageName}@latest`, `${binBase}-server`]
 };
 
-console.log('Updated configuration for ClaudeTalkToFigma:');
-console.log(JSON.stringify(config.mcpServers['ClaudeTalkToFigma'], null, 2));
+console.log('Updated configuration for TalkToFigma:');
+console.log(JSON.stringify(config.mcpServers['TalkToFigma'], null, 2));
 
 // Write configuration
 try {
@@ -82,8 +84,8 @@ try {
   console.log('\nConfiguration completed successfully.');
   console.log('\nTo use this MCP in Claude Desktop:');
   console.log('1. Restart Claude Desktop if it\'s running');
-  console.log('2. Open Claude Desktop and select "ClaudeTalkToFigma" from the MCPs list');
-  console.log(`3. Start the WebSocket server: npx ${packageName}-socket`);
+  console.log('2. Open Claude Desktop and select "TalkToFigma" from the MCPs list');
+  console.log(`3. Start the relay: npx ${packageName}`);
   console.log('4. Install and run the Figma plugin');
 } catch (e) {
   console.error(`Error writing configuration: ${e.message}`);

@@ -310,7 +310,7 @@ function waitForConnection(timeoutMs: number = CONNECTION_WAIT_MS): Promise<void
         clearInterval(poll);
         reject(new Error(
           "Could not connect to the Figma socket server. " +
-          "Make sure the socket server is running and the Claude Talk to Figma plugin is open and connected."
+          "Make sure the socket server is running and the Talk to Figma plugin is open and connected."
         ));
       }
     }, 100);

@@ -44,7 +44,7 @@ async function installBun() {
 }
 
 async function main() {
-    console.log('🎨 Welcome to Claude Talk to Figma MCP Launcher!');
+    console.log('🎨 Welcome to the Talk to Figma MCP launcher!');
 
     // Handle optional target directory
     const targetDir = process.argv[2];

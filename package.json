@@ -1,13 +1,13 @@
 {
-  "name": "claude-talk-to-figma-mcp",
-  "description": "Claude Desktop Talk to Figma MCP",
+  "name": "@alkaness/talk-to-figma-mcp",
+  "description": "MCP server, relay and Figma plugin that let AI agents read, inspect and edit Figma files",
   "version": "1.4.0",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
-    "claude-talk-to-figma-mcp": "scripts/launcher.js",
-    "claude-talk-to-figma-mcp-server": "dist/talk_to_figma_mcp/server.js",
-    "claude-talk-to-figma-mcp-socket": "dist/socket.js"
+    "talk-to-figma-mcp": "scripts/launcher.js",
+    "talk-to-figma-mcp-server": "dist/talk_to_figma_mcp/server.js",
+    "talk-to-figma-mcp-socket": "dist/socket.js"
   },
   "files": [
     "dist",
@@ -73,7 +73,11 @@
     "design",
     "automation"
   ],
-  "author": "Xúlio Zé",
+  "author": "Alkaness (https://github.com/Alkaness)",
+  "contributors": [
+    "Xúlio Zé (https://github.com/arinspunk)",
+    "Sonny Lazuardi (https://github.com/sonnylazuardi)"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -82,5 +86,8 @@
   "bugs": {
     "url": "https://github.com/Alkaness/talk-to-figma-mcp/issues"
   },
-  "homepage": "https://github.com/Alkaness/talk-to-figma-mcp#readme"
+  "homepage": "https://github.com/Alkaness/talk-to-figma-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -32,7 +32,7 @@ This guide covers the three parts of a working setup and the configuration for e
 In the folder where the project should be installed, run:
 
 ```bash
-npx claude-talk-to-figma-mcp
+npx @alkaness/talk-to-figma-mcp
 ```
 
 The launcher performs 3 steps:
@@ -86,11 +86,13 @@ The image sets `FIGMA_SOCKET_HOST=0.0.0.0` inside the container. The `127.0.0.1:
 
 Each client starts the MCP server itself. The configuration below is the same for every client except for the file it is stored in.
 
+An existing entry that runs `claude-talk-to-figma-mcp` starts the original project's package, not this one. Replace it with the entry below.
+
 ### 4.1 Claude Desktop
 
 **Option A: DXT package**
 
-1. Download `claude-talk-to-figma-mcp.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases).
+1. Download `talk-to-figma-mcp.dxt` from the [releases page](https://github.com/Alkaness/talk-to-figma-mcp/releases).
 2. Open the file. Claude Desktop installs the extension.
 
 **Option B: JSON configuration**
@@ -100,9 +102,9 @@ Open **Settings > Developer > Edit Config** and add the following to `claude_des
 ```json
 {
   "mcpServers": {
-    "ClaudeTalkToFigma": {
+    "TalkToFigma": {
       "command": "npx",
-      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+      "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
     }
   }
 }
@@ -113,7 +115,7 @@ Restart Claude Desktop.
 ### 4.2 Claude Code
 
 ```bash
-claude mcp add ClaudeTalkToFigma -- npx -p claude-talk-to-figma-mcp@latest claude-talk-to-figma-mcp-server
+claude mcp add TalkToFigma -- npx -p @alkaness/talk-to-figma-mcp@latest talk-to-figma-mcp-server
 claude mcp list
 ```
 
@@ -122,9 +124,9 @@ For a per-project setup, create `.mcp.json` in the project root instead:
 ```json
 {
   "mcpServers": {
-    "ClaudeTalkToFigma": {
+    "TalkToFigma": {
       "command": "npx",
-      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+      "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
     }
   }
 }
@@ -141,9 +143,9 @@ Inside Claude Code, `/mcp` shows the server status.
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+         "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
        }
      }
    }
@@ -159,12 +161,12 @@ Inside Claude Code, `/mcp` shows the server status.
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
          "args": [
            "-p",
-           "claude-talk-to-figma-mcp@latest",
-           "claude-talk-to-figma-mcp-server"
+           "@alkaness/talk-to-figma-mcp@latest",
+           "talk-to-figma-mcp-server"
          ]
        }
      }
@@ -184,9 +186,9 @@ Inside Claude Code, `/mcp` shows the server status.
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+         "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
        }
      }
    }
@@ -201,7 +203,7 @@ GitHub Copilot must be enabled on the account.
 **Option A: command line**
 
 ```bash
-code --add-mcp "{\"name\":\"ClaudeTalkToFigma\",\"command\":\"npx\",\"args\":[\"-p\",\"claude-talk-to-figma-mcp@latest\",\"claude-talk-to-figma-mcp-server\"]}"
+code --add-mcp "{\"name\":\"TalkToFigma\",\"command\":\"npx\",\"args\":[\"-p\",\"@alkaness/talk-to-figma-mcp@latest\",\"talk-to-figma-mcp-server\"]}"
 ```
 
 **Option B: Command Palette**
@@ -210,8 +212,8 @@ code --add-mcp "{\"name\":\"ClaudeTalkToFigma\",\"command\":\"npx\",\"args\":[\"
 2. Run **MCP: Add Server**.
 3. Select **Command (stdio)**.
 4. Command: `npx`
-5. Arguments: `-p claude-talk-to-figma-mcp@latest claude-talk-to-figma-mcp-server`
-6. Name: `ClaudeTalkToFigma`
+5. Arguments: `-p @alkaness/talk-to-figma-mcp@latest talk-to-figma-mcp-server`
+6. Name: `TalkToFigma`
 7. Choose global or workspace scope.
 
 The resulting entry in `mcp.json` (or `.vscode/mcp.json` for a workspace):
@@ -219,10 +221,10 @@ The resulting entry in `mcp.json` (or `.vscode/mcp.json` for a workspace):
 ```json
 {
   "servers": {
-    "ClaudeTalkToFigma": {
+    "TalkToFigma": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"]
+      "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"]
     }
   }
 }
@@ -241,9 +243,9 @@ Type `#` in the Copilot chat to list the available tools.
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"],
+         "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"],
          "disabled": false,
          "alwaysAllow": []
        }
@@ -265,9 +267,9 @@ Type `#` in the Copilot chat to list the available tools.
    ```json
    {
      "mcpServers": {
-       "ClaudeTalkToFigma": {
+       "TalkToFigma": {
          "command": "npx",
-         "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"],
+         "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"],
          "disabled": false,
          "alwaysAllow": []
        }
@@ -303,9 +305,9 @@ Figma shows the token only once.
 ```json
 {
   "mcpServers": {
-    "ClaudeTalkToFigma": {
+    "TalkToFigma": {
       "command": "npx",
-      "args": ["-p", "claude-talk-to-figma-mcp@latest", "claude-talk-to-figma-mcp-server"],
+      "args": ["-p", "@alkaness/talk-to-figma-mcp@latest", "talk-to-figma-mcp-server"],
       "env": {
         "FIGMA_PERSONAL_TOKEN": "figd_your_token_here"
       }
@@ -317,8 +319,8 @@ Figma shows the token only once.
 **Claude Code:**
 
 ```bash
-claude mcp add ClaudeTalkToFigma --env FIGMA_PERSONAL_TOKEN=figd_your_token_here \
-  -- npx -p claude-talk-to-figma-mcp@latest claude-talk-to-figma-mcp-server
+claude mcp add TalkToFigma --env FIGMA_PERSONAL_TOKEN=figd_your_token_here \
+  -- npx -p @alkaness/talk-to-figma-mcp@latest talk-to-figma-mcp-server
 ```
 
 Restart the client and run `rest_whoami` to confirm the token works. The server also accepts `FIGMA_API_TOKEN`, `FIGMA_TOKEN` or `--figma-token=`.

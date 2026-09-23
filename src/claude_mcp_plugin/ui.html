@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Claude MCP Plugin</title>
+    <title>Talk to Figma</title>
     <style>
       body {
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -231,7 +231,7 @@
             <path d="M454-794.31V-902h52v107.69zM454-58v-107.69h52V-58zm340.31-396v-52H902v52zM58-454v-52h107.69v52zm660.31-227.15-37.16-37.16L759-798.38 798.38-759zM202-162.62 162.62-202l79.07-76.85 37.16 37.16zm557 0-77.85-79.07 37.16-37.16L798.38-202zM241.69-681.15 162.62-759 202-798.38l76.85 80.07zm82.54 356.92Q260-388.46 260-480t64.23-155.77T480-700t155.77 64.23T700-480t-64.23 155.77T480-260t-155.77-64.23M599-360.5q49-49.5 49-119.75 0-70.24-48.75-119-48.76-48.75-119-48.75Q410-648 361-599.25q-49 48.76-49 119 0 70.25 48.75 119.75 48.76 49.5 119 49.5Q550-311 599-360.5M481-481"/></svg>
       </div>
       <div class="header mcp-plugin__header">
-        <h1 class="mcp-plugin__header-title">🤖🎨 Claude Talk to Figma</h1>
+        <h1 class="mcp-plugin__header-title">Talk to Figma</h1>
         <p class="mcp-plugin__header-description">AI agents reading and modifing Figma designs</p>
       </div>
       <div class="content mcp-plugin__content">   
@@ -342,8 +342,8 @@
           this.ui.connectionStatus.innerHTML =
             message ||
             (isConnected
-              ? "Connected to Claude MCP server"
-              : "Not connected to Claude MCP server");
+              ? "Connected to MCP server"
+              : "Not connected to MCP server");
           
           this.ui.connectionStatus.className = `mcp-plugin__connection-status ${
             isConnected ? "connected" : (message && message.includes("Connecting") ? "info" : "disconnected")

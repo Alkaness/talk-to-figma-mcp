@@ -81,7 +81,7 @@ bun run build        # bun run build:win on Windows
 | `bun run build` | `dist/` (MCP server and relay) |
 | `bun run build:watch` | Rebuilds on change |
 | `bun run socket` | Starts the relay from `dist/` |
-| `npm run build:dxt` | Syncs versions, builds, and packs `claude-talk-to-figma-mcp.dxt` |
+| `npm run build:dxt` | Syncs versions, builds, and packs `talk-to-figma-mcp.dxt` |
 | `npm run build:compile` | Standalone binaries for the current platform in `dist/bin/` |
 | `npm run compile:all-platforms` | Binaries for Linux x64, macOS arm64 and Windows x64 |
 
@@ -95,7 +95,7 @@ bun run build        # bun run build:win on Windows
 ```json
 {
   "mcpServers": {
-    "ClaudeTalkToFigma-Local": {
+    "TalkToFigma-Local": {
       "command": "node",
       "args": ["/ABSOLUTE/PATH/TO/talk-to-figma-mcp/dist/talk_to_figma_mcp/server.js"]
     }
@@ -139,7 +139,7 @@ The script walks through the full path from MCP client to relay to Figma, step b
 2. The relay starts and `http://localhost:3055/status` returns JSON with the relay status and statistics.
 3. `ss -ltn 'sport = :3055'` (Linux) or `lsof -i :3055` (macOS) shows the relay on `127.0.0.1` only.
 4. The plugin imports from `src/claude_mcp_plugin/manifest.json` and connects.
-5. The MCP client lists the server (`ClaudeTalkToFigma`).
+5. The MCP client lists the server (`TalkToFigma`).
 6. Asking "Show me information about my current Figma selection" returns the selection without any channel ID.
 7. Creating and recoloring a rectangle works, with `parentId` set.
 8. After the relay restarts, the plugin and the MCP server reconnect on their own.
