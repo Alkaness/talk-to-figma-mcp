@@ -5,6 +5,7 @@ import { coerceJson } from "../utils/schema-helpers";
 import { parseCommandResult } from "../utils/command-results";
 import {
   FontCatalog,
+  FontSuggestions,
   fontFamiliesOf,
   normalizeNodeTree,
   normalizeNodeUpdates,
@@ -22,13 +23,15 @@ const CREATE_NODE_TREE_DESCRIPTION =
   "keyed by the node's key, else its source id, else its path (tree.children[0]), and a warning for anything that was not " +
   "applied. Prefer it to chains of create_* and set_* calls.\n" +
   "Node fields: type (FRAME, TEXT, RECTANGLE, ELLIPSE, LINE, GROUP, COMPONENT, or INSTANCE with componentId); name; key; " +
-  "width, height; x, y relative to the parent; rotation in degrees; visible, opacity, blendMode; fills and strokes as hex " +
+  "width, height (before rotation); x, y relative to the parent; rotation in degrees, counterclockwise; visible, opacity, " +
+  "blendMode; fills and strokes as hex " +
   "strings (\"#0F172A\", \"#0F172A80\") or paints {type: SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL or IMAGE, color, opacity, " +
   "gradientStops, gradientHandlePositions, imageRef, scaleMode}; strokeWeight, strokeAlign, strokeDashes, " +
   "individualStrokeWeights; cornerRadius, or rectangleCornerRadii [topLeft, topRight, bottomRight, bottomLeft]; effects " +
   "(DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR); clipsContent. Auto-layout: layoutMode, paddingTop/Right/" +
   "Bottom/Left, itemSpacing, counterAxisSpacing, layoutWrap, primaryAxisAlignItems, counterAxisAlignItems, " +
-  "primaryAxisSizingMode, counterAxisSizingMode. As a child of an auto-layout frame: layoutSizingHorizontal and " +
+  "primaryAxisSizingMode, counterAxisSizingMode (an omitted mode hugs the content, unless that axis has layoutSizing " +
+  "FIXED or FILL, or a width or height). As a child of an auto-layout frame: layoutSizingHorizontal and " +
   "layoutSizingVertical (FIXED, HUG or FILL), layoutPositioning (ABSOLUTE places it by x, y), minWidth, maxWidth, " +
   "minHeight, maxHeight; elsewhere, constraints. Text: characters; style {fontFamily, fontStyle or fontWeight, italic, " +
   "fontSize, lineHeightPx, letterSpacing, textCase, textDecoration, textAlignHorizontal, textAutoResize}; textRuns " +
@@ -45,11 +48,17 @@ const UPDATE_NODES_DESCRIPTION =
   "width and height resize; absoluteBoundingBox, localPosition and parentOffset are read-only and ignored. Changing " +
   "fontStyle, fontWeight or italic needs fontFamily in the same style.";
 
+export const NO_FONTS_MESSAGE =
+  "Figma lists no fonts at all (figma.listAvailableFontsAsync() is empty), so no text can be created or changed. " +
+  "The Figma client cannot load fonts; this was seen with figma-linux. Restart Figma, or use a client whose font " +
+  "loading works, then run the plugin again.";
+
 /** Look up the styles of the families a spec uses, to resolve weights to style names. */
-async function fontCatalogFor(families: string[]): Promise<FontCatalog> {
-  if (families.length === 0) return {};
-  const result = await sendCommandToFigma("get_available_fonts", { families }, 60000);
-  return parseCommandResult("get_available_fonts", result).fonts;
+async function fontCatalogFor(families: string[]): Promise<{ catalog: FontCatalog; suggestions: FontSuggestions }> {
+  if (families.length === 0) return { catalog: {}, suggestions: {} };
+  const result = parseCommandResult("get_available_fonts", await sendCommandToFigma("get_available_fonts", { families }, 60000));
+  if (result.fontCount === 0) throw new Error(NO_FONTS_MESSAGE);
+  return { catalog: result.fonts, suggestions: result.suggestions ?? {} };
 }
 
 function errorResult(action: string, error: unknown) {
@@ -86,8 +95,8 @@ export function registerNodeTreeTools(server: McpServer): void {
     async ({ parentId, tree, index }) => {
       try {
         const spec = parseNodeSpec(tree);
-        const catalog = await fontCatalogFor(fontFamiliesOf([spec], "create"));
-        const normalized = normalizeNodeTree(spec, catalog);
+        const { catalog, suggestions } = await fontCatalogFor(fontFamiliesOf([spec], "create"));
+        const normalized = normalizeNodeTree(spec, catalog, suggestions);
         if (!normalized.tree) {
           return {
             content: [{ type: "text", text: ["Nothing was created.", ...warningLines(normalized.warnings)].join("\n") }],
@@ -128,8 +137,8 @@ export function registerNodeTreeTools(server: McpServer): void {
     async ({ updates }) => {
       try {
         const parsed = parseNodeUpdates(updates);
-        const catalog = await fontCatalogFor(fontFamiliesOf(parsed, "update"));
-        const normalized = normalizeNodeUpdates(parsed, catalog);
+        const { catalog, suggestions } = await fontCatalogFor(fontFamiliesOf(parsed, "update"));
+        const normalized = normalizeNodeUpdates(parsed, catalog, suggestions);
 
         const raw = await sendCommandToFigma(
           "update_nodes",

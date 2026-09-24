@@ -442,14 +442,21 @@ function pruneNodeDocToDepth(doc, depth, currentDepth = 0) {
   return doc;
 }
 
-// The REST format does not document the unit of `rotation`. Replace it with
-// the Plugin API value, in degrees, which rotate_node and create_node_tree
-// take. Children are matched by id, down to the depth that is returned.
+// The REST format stores `rotation` in radians with the opposite sign (30
+// degrees exports as -0.5236). Replace it with the Plugin API value, in
+// degrees, which rotate_node and create_node_tree take. Children are matched
+// by id, down to the depth that is returned.
 function annotateRotation(doc, node, depth) {
   if (!doc || !node) return;
   if ("rotation" in node) {
-    if (node.rotation) doc.rotation = node.rotation;
-    else delete doc.rotation;
+    if (node.rotation) {
+      doc.rotation = node.rotation;
+      // The bounding box of a rotated node is larger than the node; near 45
+      // degrees its size cannot be recovered from the box alone.
+      if ("width" in node) doc.size = { x: node.width, y: node.height };
+    } else {
+      delete doc.rotation;
+    }
   }
   if (depth <= 0 || !Array.isArray(doc.children) || !("children" in node)) return;
   const byId = new Map();
@@ -6936,7 +6943,38 @@ async function loadAvailableFontIndex(refresh) {
   return index;
 }
 
-// The styles of each family, matched case-insensitively; null for a family Figma does not have.
+function editDistance(a, b) {
+  let previous = [];
+  for (let j = 0; j <= b.length; j++) previous.push(j);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current.push(Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost));
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+
+// Up to 5 families whose names contain the wanted one or are a few edits away.
+function similarFamilies(index, family) {
+  const wanted = String(family).toLowerCase().replace(/[\s_-]+/g, "");
+  if (!wanted) return [];
+  const limit = Math.max(2, Math.floor(wanted.length / 3));
+  const scored = [];
+  index.forEach((entry, key) => {
+    const name = key.replace(/[\s_-]+/g, "");
+    const score = name.indexOf(wanted) !== -1 || wanted.indexOf(name) !== -1 ? 0 : editDistance(wanted, name);
+    if (score <= limit) scored.push({ family: entry.family, score });
+  });
+  scored.sort((a, b) => a.score - b.score || a.family.length - b.family.length || (a.family < b.family ? -1 : 1));
+  return scored.slice(0, 5).map((item) => item.family);
+}
+
+// The styles of each family, matched case-insensitively; null for a family
+// Figma does not have, with similarly named families in `suggestions`.
+// fontCount is the number of families Figma lists at all.
 async function getAvailableFonts(params) {
   const families = params && Array.isArray(params.families) ? params.families : [];
   let index = await loadAvailableFontIndex(false);
@@ -6945,11 +6983,13 @@ async function getAvailableFonts(params) {
     index = await loadAvailableFontIndex(true);
   }
   const fonts = {};
+  const suggestions = {};
   for (const family of families) {
     const entry = index.get(String(family).toLowerCase());
     fonts[family] = entry ? { family: entry.family, styles: entry.styles.slice() } : null;
+    if (!entry) suggestions[family] = similarFamilies(index, family);
   }
-  return { fonts };
+  return { fonts, suggestions, fontCount: index.size };
 }
 
 async function loadFonts(fonts) {
@@ -7045,8 +7085,12 @@ function applySpecSize(node, size, ctx, label) {
     ctx.warnings.push(`${label}: a ${node.type} node cannot be resized; size skipped`);
     return;
   }
-  const width = Math.max(size.width !== undefined ? size.width : node.width, 0.01);
-  const height = Math.max(size.height !== undefined ? size.height : node.height, 0.01);
+  const wantWidth = size.width !== undefined ? size.width : node.width;
+  const wantHeight = size.height !== undefined ? size.height : node.height;
+  // Clones already have their size, and a resize would turn a 0-wide vector into 0.01.
+  if (Math.abs(wantWidth - node.width) < 0.01 && Math.abs(wantHeight - node.height) < 0.01) return;
+  const width = Math.max(wantWidth, 0.01);
+  const height = Math.max(wantHeight, 0.01);
   try {
     // A line's length is its width; its height must stay 0.
     node.resize(width, node.type === "LINE" ? 0 : height);
@@ -7059,8 +7103,9 @@ function hasAutoLayout(node) {
   return !!node && "layoutMode" in node && node.layoutMode !== "NONE";
 }
 
-// Returns true when x and y were applied.
-function applySpecPosition(node, position, ctx, label) {
+// Returns true when x and y were applied. `shift` moves a rebuilt group by
+// where its children start inside the original group's box.
+function applySpecPosition(node, position, ctx, label, shift) {
   if (!position) return false;
   if (hasAutoLayout(node.parent) && node.layoutPositioning !== "ABSOLUTE") {
     if (position.explicit) {
@@ -7068,8 +7113,8 @@ function applySpecPosition(node, position, ctx, label) {
     }
     return false;
   }
-  if (position.x !== undefined) node.x = position.x;
-  if (position.y !== undefined) node.y = position.y;
+  if (position.x !== undefined) node.x = position.x + (shift ? shift.x : 0);
+  if (position.y !== undefined) node.y = position.y + (shift ? shift.y : 0);
   return true;
 }
 
@@ -7092,9 +7137,10 @@ function insertIntoParent(parent, node, index) {
   else parent.appendChild(node);
 }
 
-// Apply everything but creation and children, in the order the Plugin API
-// requires. `placement` inserts a new node between the properties that need
-// no parent and those that do (FILL and ABSOLUTE need an auto-layout parent).
+// Apply everything but creation, children and placement, in the order the
+// Plugin API requires. `placement` inserts a new node between the properties
+// that need no parent and those that do (FILL and ABSOLUTE need an
+// auto-layout parent).
 async function applyNodeSpec(node, spec, placement, ctx) {
   const label = spec.label;
   if (ctx.mode === "update" && node.type === "TEXT") await loadNodeFonts(node);
@@ -7111,9 +7157,29 @@ async function applyNodeSpec(node, spec, placement, ctx) {
   setNodeProps(node, spec.layout, NODE_SPEC_PROPS.layout, ctx, label);
   if (placement) insertIntoParent(placement.parent, node, placement.index);
   setNodeProps(node, spec.childProps, NODE_SPEC_PROPS.childProps, ctx, label);
-  const positioned = applySpecPosition(node, spec.position, ctx, label);
+}
+
+// Position, constraints and rotation. create_node_tree applies them after the
+// whole tree is built: a HUG or FILL parent changes size while its children
+// are added, and a child with RIGHT or BOTTOM constraints that was placed
+// earlier would move with it.
+function placeSpecNode(node, spec, ctx, shift) {
+  const label = spec.label;
+  const positioned = applySpecPosition(node, spec.position, ctx, label, shift);
   if (spec.constraints) setNodeProp(node, "constraints", spec.constraints, ctx, label);
   if (spec.rotation !== undefined) applySpecRotation(node, spec, positioned, ctx, label);
+}
+
+// Entries are in build order, parents before children, so a rotated node's
+// parent is in place before its bounding box is measured.
+function placeSpecNodes(entries, ctx) {
+  for (const entry of entries) {
+    try {
+      placeSpecNode(entry.node, entry.spec, ctx, entry.shift);
+    } catch (error) {
+      throw new Error(`at ${entry.spec.label}: ${errorText(error)}`);
+    }
+  }
 }
 
 async function instantiateSpec(spec, ctx) {
@@ -7152,13 +7218,17 @@ function pageOf(node) {
 
 // A group has no coordinate space of its own: build its children in a scratch
 // frame at their offsets from the group's box, group them there, then move
-// the group into place.
+// the group into place. Returns the group and where its box starts in the
+// scratch frame: not at 0, 0 when the original group was rotated, because a
+// rotated group's box is larger than its children.
 async function buildGroup(spec, placement, ctx) {
   const scratch = figma.createFrame();
   scratch.name = "create_node_tree scratch";
   scratch.fills = [];
   scratch.clipsContent = false;
   pageOf(placement.parent).appendChild(scratch);
+  const outerPlacements = ctx.placements;
+  ctx.placements = [];
   try {
     const built = [];
     for (const child of spec.children || []) {
@@ -7169,10 +7239,14 @@ async function buildGroup(spec, placement, ctx) {
       ctx.warnings.push(`${spec.label}: skipped; none of its children could be built`);
       return null;
     }
+    // A group's bounds follow its children, so they are placed before grouping.
+    placeSpecNodes(ctx.placements, ctx);
     const group = figma.group(built, scratch);
+    const shift = { x: group.x, y: group.y };
     insertIntoParent(placement.parent, group, placement.index);
-    return group;
+    return { group, shift };
   } finally {
+    ctx.placements = outerPlacements;
     if (!scratch.removed) scratch.remove();
   }
 }
@@ -7181,12 +7255,22 @@ async function buildSpecNode(spec, placement, ctx) {
   let node = null;
   try {
     const isGroup = spec.create.kind === "group";
-    node = isGroup ? await buildGroup(spec, placement, ctx) : await instantiateSpec(spec, ctx);
+    let shift = null;
+    if (isGroup) {
+      const built = await buildGroup(spec, placement, ctx);
+      if (built) {
+        node = built.group;
+        shift = built.shift;
+      }
+    } else {
+      node = await instantiateSpec(spec, ctx);
+    }
     if (!node) return null;
     ctx.ids[spec.key] = node.id;
     ctx.created += 1;
-    // buildGroup has already placed the group.
+    // buildGroup has already inserted the group.
     await applyNodeSpec(node, spec, isGroup ? null : placement, ctx);
+    ctx.placements.push({ node, spec, shift });
     if (spec.create.kind === "new" && spec.children) {
       for (const child of spec.children) await buildSpecNode(child, { parent: node }, ctx);
     }
@@ -7230,9 +7314,17 @@ async function createNodeTree(params) {
   // Load every font first, so a missing font fails the call before anything is created.
   await loadFonts(fonts);
 
-  const ctx = { mode: "create", ids: {}, warnings: [], created: 0, total: countSpecNodes(tree), commandId };
+  const ctx = { mode: "create", ids: {}, warnings: [], placements: [], created: 0, total: countSpecNodes(tree), commandId };
   sendProgressUpdate(commandId, "create_node_tree", "started", 0, ctx.total, 0, `Building ${ctx.total} nodes…`);
   const root = await buildSpecNode(tree, { parent, index }, ctx);
+  if (root) {
+    try {
+      placeSpecNodes(ctx.placements, ctx);
+    } catch (error) {
+      if (!root.removed) root.remove();
+      throw error;
+    }
+  }
   sendProgressUpdate(commandId, "create_node_tree", "completed", 100, ctx.total, ctx.created, `Built ${ctx.created} nodes`);
   return { rootId: root ? root.id : null, ids: ctx.ids, created: ctx.created, warnings: ctx.warnings };
 }
@@ -7256,7 +7348,9 @@ async function updateNodes(params) {
     try {
       const node = await getNodeByIdSafe(update.nodeId);
       if (!node) throw new Error(`Node not found with ID: ${update.nodeId}`);
-      await applyNodeSpec(node, update.spec, null, { mode: "update", warnings });
+      const ctx = { mode: "update", warnings };
+      await applyNodeSpec(node, update.spec, null, ctx);
+      placeSpecNode(node, update.spec, ctx);
       results.push({ nodeId: update.nodeId, ok: true });
       succeeded++;
     } catch (error) {

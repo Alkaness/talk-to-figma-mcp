@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { coerceJson } from "../utils/schema-helpers";
-import { filterFigmaNode } from "../utils/figma-helpers";
+import { filterFigmaNode, restRotationToDegrees } from "../utils/figma-helpers";
 import { logger } from "../utils/logger";
 import {
   hasRestToken,
@@ -96,7 +96,7 @@ export function registerRestTools(server: McpServer): void {
           if (!entry) {
             throw new Error(`Node ${effectiveNodeId} was not found in this file.`);
           }
-          const filtered = filterFigmaNode(entry.document, effectiveDepth);
+          const filtered = filterFigmaNode(restRotationToDegrees(entry.document), effectiveDepth);
           const payload = { file: res.name, lastModified: res.lastModified, node: filtered };
           return {
             content: [{ type: "text", text: JSON.stringify(payload) }],
@@ -105,7 +105,7 @@ export function registerRestTools(server: McpServer): void {
         }
 
         const res = await restGetFile(ref.fileKey, effectiveDepth);
-        const filtered = filterFigmaNode(res.document, effectiveDepth);
+        const filtered = filterFigmaNode(restRotationToDegrees(res.document), effectiveDepth);
         const payload = { file: res.name, lastModified: res.lastModified, version: res.version, document: filtered };
         return {
           content: [{ type: "text", text: JSON.stringify(payload) }],

@@ -110,11 +110,21 @@ The same cause also produces "Figma plugin disconnected before the command could
 **Resolution:**
 
 1. Use a style from the list in the error. A `fontWeight` without `fontStyle` selects the closest available style.
-2. Install the font, then restart Figma so that it loads the font.
+2. For an unknown family, the error names up to 5 similarly spelled families that Figma has. Otherwise install the font, then restart Figma so that it loads the font.
 3. Team fonts may need to be loaded manually in Figma first.
 4. Call `load_font_async` to check whether a font can be loaded.
 
-### 3.6 "The Figma plugin is older than this server" or "Unexpected response shape from the Figma plugin"
+### 3.6 "Figma lists no fonts at all"
+
+**Cause:** `figma.listAvailableFontsAsync()` returned no fonts, so the Figma client cannot load any font and no plugin can create or edit text. On 2026-09-24 this was seen with figma-linux (snap, build 197): the plugin received 0 families, and `loadFontAsync` failed even for Inter Regular. `create_text` fails in the same session with `The font "Inter Regular" could not be loaded`.
+
+**Resolution:**
+
+1. Restart Figma, then run the plugin again.
+2. In figma-linux, check the font directories in its settings, or try another build of the client.
+3. Tools that do not create or edit text keep working.
+
+### 3.7 "The Figma plugin is older than this server" or "Unexpected response shape from the Figma plugin"
 
 **Cause:** the server sent a command that the plugin does not know, or the plugin returned a result in an older format. Figma keeps running the plugin code it imported until the plugin is imported again.
 

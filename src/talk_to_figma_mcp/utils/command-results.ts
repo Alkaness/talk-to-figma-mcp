@@ -177,6 +177,9 @@ export const COMMAND_RESULT_SCHEMAS = {
   get_available_fonts: z
     .object({
       fonts: z.record(z.object({ family: z.string(), styles: z.array(z.string()) }).nullable()),
+      // Older plugins send only fonts.
+      suggestions: z.record(z.array(z.string())).optional(),
+      fontCount: z.number().optional(),
     })
     .passthrough(),
 

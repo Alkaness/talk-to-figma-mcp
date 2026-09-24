@@ -129,6 +129,18 @@ describe("rest_get_file", () => {
     expect(node.children.find((c: any) => c.name === "Old price").visible).toBe(false);
   });
 
+  it("reports rotation in degrees, as get_node_info does", async () => {
+    makeServer();
+    mockGetNodes.mockResolvedValue({
+      name: "My File",
+      lastModified: "2026-01-01",
+      nodes: { "12:34": { document: { id: "12:34", name: "Badge", type: "RECTANGLE", rotation: -0.5235987755982988 } } },
+    });
+
+    const result = await call("rest_get_file", { file: "KEY", nodeId: "12:34", depth: 0 });
+    expect(result.structuredContent.node.rotation).toBe(30);
+  });
+
   it("flags a missing node as an error", async () => {
     makeServer();
     mockGetNodes.mockResolvedValue({ name: "F", lastModified: "x", nodes: { "9:9": null } });

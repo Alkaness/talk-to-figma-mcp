@@ -20,6 +20,16 @@ The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > De
   5. Both report every property that was not applied as a warning. A failed build removes what it created.
 
 ### Fixed
+- **`create_node_tree` was tested in Figma, and these problems were fixed.** The rebuilt test nodes include a 125-node section and a 122-node rotated group.
+  1. An absolute child with a RIGHT or BOTTOM constraint moved when its HUG parent grew while later siblings were added: a badge placed at 170, 150 landed at 330, 300. Positions, constraints and rotation are now applied after the whole tree is built.
+  2. A rotated GROUP was rotated twice, because its children's rotation already includes the group's. A group is now built unrotated and placed at its children's box. In the 122-node group, rotated -147.7 degrees, every node lands within 0.01 px of the original.
+  3. A clone inside a rotated group kept a rotation relative to the group. Clones and instances now always get their rotation, 0 included.
+  4. Figma's defaults for new nodes differed from what an omitted field means in `get_node_info` output. New auto-layout frames included strokes in the layout, new drop shadows were shown behind the node, and the counter axis of a new auto-layout frame stayed fixed. These values are now set explicitly. An omitted sizing mode hugs, unless `layoutSizing*` or a width or height says otherwise.
+  5. Clones were resized to the size they already had, which turned a 0 px wide vector into 0.01 px.
+  6. When Figma listed no fonts, text failed with `font family "Inter" is not available in Figma`. The error now says that Figma lists no fonts (seen with figma-linux), and an unknown family names up to 5 similarly spelled families.
+- **Image contrast in `get_node_info` output was 0.3 times the value Figma uses.** The REST format scales contrast by 0.3 (0.9 exports as 0.27); the other six filters are unscaled. The value is now converted, so it matches `set_image_filters` and `create_node_tree`.
+- **`rest_get_file` reported rotation in radians with the opposite sign.** It now reports degrees, as `get_node_info` does.
+- **`rotate_node` described its angle as clockwise.** Figma's rotation is counterclockwise.
 - **`get_node_info`, `get_nodes_info` and `rest_get_file` no longer discard layout and styling.** The node filter kept 10 properties and dropped the rest. Agents therefore had to infer auto-layout from coordinates, rendered hidden layers, merged mixed-style text into one style, and lost stroke weights, per-corner radii, effects, opacity and clipping. The tree now includes:
   1. Auto-layout and child sizing: `layoutMode`, padding, `itemSpacing`, alignment, sizing modes, `layoutSizingHorizontal`/`layoutSizingVertical`, `layoutPositioning` and constraints.
   2. `visible: false` stubs for hidden layers.
@@ -37,7 +47,7 @@ The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > De
 
 ### Changed
 - The `export-to-tailwind` and `read_design_strategy` prompts and the `get_node_info`, `get_nodes_info`, `get_css` and `rest_get_file` descriptions now describe the fields above.
-- `get_node_info` and `get_nodes_info` report `rotation` in degrees, taken from the Plugin API, because the REST format does not document the unit of its value. This needs the updated plugin.
+- `get_node_info` and `get_nodes_info` report `rotation` in degrees, counterclockwise, taken from the Plugin API; the REST format stores radians with the opposite sign (30 degrees exports as -0.5236). A rotated node also reports its `width` and `height` before rotation, which its bounding box does not show. This needs the updated plugin.
 - `batch_operations` returns the ID of each node its operations created. Its description states that its params use the plugin's own shape.
 - The `design_strategy` prompt now teaches auto-layout with FILL and HUG sizing, one `create_node_tree` call, and one visual check at the end. It no longer teaches x/y placement with a `get_node_info` call after every creation. The server instructions point to the new tools.
 

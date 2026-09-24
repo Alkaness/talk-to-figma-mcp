@@ -1,4 +1,4 @@
-import { filterFigmaNode } from '../../../src/talk_to_figma_mcp/utils/figma-helpers';
+import { filterFigmaNode, restRotationToDegrees } from '../../../src/talk_to_figma_mcp/utils/figma-helpers';
 import { pricingCardNode, vectorNode } from '../../fixtures/rest-nodes';
 
 const childNamed = (tree: any, name: string) => tree.children.find((c: any) => c.name === name);
@@ -60,6 +60,24 @@ describe('filterFigmaNode', () => {
       const out = filterFigmaNode({ ...vectorNode(), localPosition: { x: 5.004, y: 9.996 } });
       expect(out.localPosition).toEqual({ x: 5, y: 10 });
     });
+
+    it('gives a rotated node its size before rotation, which the box does not show', () => {
+      const rotated = filterFigmaNode({ ...vectorNode(), rotation: -45, size: { x: 80.004, y: 30 } });
+      expect(rotated).toMatchObject({ rotation: -45, width: 80, height: 30 });
+      const upright = filterFigmaNode({ ...vectorNode(), size: { x: 80, y: 30 } });
+      expect(upright.width).toBeUndefined();
+      expect(upright.height).toBeUndefined();
+    });
+
+    it('converts REST rotation, radians with the opposite sign, to degrees', () => {
+      const tree = restRotationToDegrees({
+        id: '1:1', rotation: -0.5235987833701112, children: [{ id: '1:2', rotation: 0.7853981633974483 }, { id: '1:3' }],
+      });
+      const out = filterFigmaNode(tree);
+      expect(out.rotation).toBe(30);
+      expect(out.children[0].rotation).toBe(-45);
+      expect(out.children[1].rotation).toBeUndefined();
+    });
   });
 
   describe('visibility', () => {
@@ -92,6 +110,14 @@ describe('filterFigmaNode', () => {
       expect(photo.fills).toEqual([
         { type: 'IMAGE', scaleMode: 'FILL', imageRef: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678' },
       ]);
+    });
+
+    it('reports image contrast on the Plugin API scale, which is 1/0.3 of the REST value', () => {
+      const out = filterFigmaNode({
+        ...vectorNode(),
+        fills: [{ type: 'IMAGE', scaleMode: 'FILL', imageRef: 'ab', filters: { exposure: -0.27, contrast: 0.27, saturation: 0.5 } }],
+      });
+      expect(out.fills[0].filters).toEqual({ exposure: -0.27, contrast: 0.9, saturation: 0.5 });
     });
 
     it('converts colors and gradient stops to hex', () => {

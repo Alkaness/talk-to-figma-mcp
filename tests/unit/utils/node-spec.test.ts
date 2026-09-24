@@ -19,6 +19,7 @@ import {
   parseFontStyle,
   parseNodeSpec,
   parseNodeUpdates,
+  rotatedBoxOffset,
 } from '../../../src/talk_to_figma_mcp/utils/node-spec';
 import { DESIGN_STRATEGY_EXAMPLE } from '../../../src/talk_to_figma_mcp/prompts/index';
 import { pricingCardNode } from '../../fixtures/rest-nodes';
@@ -106,6 +107,7 @@ describe('normalizeNodeTree: pricing card round trip', () => {
         spread: -4,
         visible: true,
         blendMode: 'NORMAL',
+        showShadowBehindNode: false,
       },
     ]);
   });
@@ -262,7 +264,16 @@ describe('fonts', () => {
 
   it('rejects a family Figma does not have', () => {
     expect(() => textStyle({ fontFamily: 'Nope' }, { Nope: null })).toThrow(NodeSpecError);
-    expect(() => textStyle({ fontFamily: 'Nope' }, { Nope: null })).toThrow('font family "Nope" is not available in Figma');
+    expect(() => textStyle({ fontFamily: 'Nope' }, { Nope: null })).toThrow(
+      'at tree: font family "Nope" is not available in Figma. Check the spelling, or install the font'
+    );
+  });
+
+  it('names similar families when the plugin suggests them', () => {
+    const spec = parseNodeSpec({ type: 'TEXT', characters: 'a', style: { fontFamily: 'Robto' } });
+    expect(() => normalizeNodeTree(spec, { Robto: null }, { Robto: ['Roboto', 'Roboto Mono'] })).toThrow(
+      'at tree: font family "Robto" is not available in Figma. Similar families: Roboto, Roboto Mono'
+    );
   });
 
   it('lists the families a spec uses', () => {
@@ -364,6 +375,80 @@ describe('create defaults and layout rules', () => {
     expect(warnings).toEqual([
       'tree.children[0]: x and y ignored; the parent uses auto-layout. Set layoutPositioning to ABSOLUTE to place the node freely',
     ]);
+  });
+
+  it('fixes or hugs each axis of a new auto-layout frame the way get_node_info means it', () => {
+    const modes = (spec: object) => {
+      const { layout } = build({ type: 'FRAME', layoutMode: 'VERTICAL', ...spec }).tree as any;
+      return [layout.primaryAxisSizingMode, layout.counterAxisSizingMode];
+    };
+    // get_node_info omits AUTO, so an omitted mode hugs...
+    expect(modes({ absoluteBoundingBox: { x: 0, y: 0, width: 300, height: 200 } })).toEqual(['AUTO', 'AUTO']);
+    // ...unless the axis has layoutSizing, or a width or height of its own.
+    expect(modes({ layoutSizingVertical: 'FIXED', layoutSizingHorizontal: 'HUG' })).toEqual(['FIXED', 'AUTO']);
+    expect(modes({ layoutSizingHorizontal: 'FILL' })).toEqual(['AUTO', 'FIXED']);
+    expect(modes({ width: 300, height: 200 })).toEqual(['FIXED', 'FIXED']);
+    expect(modes({ width: 300 })).toEqual(['AUTO', 'FIXED']);
+    expect(modes({ height: 200, primaryAxisSizingMode: 'AUTO' })).toEqual(['AUTO', 'AUTO']);
+    const horizontal = build({ type: 'FRAME', layoutMode: 'HORIZONTAL', width: 300 }).tree as any;
+    expect(horizontal.layout).toMatchObject({ primaryAxisSizingMode: 'FIXED', counterAxisSizingMode: 'AUTO' });
+  });
+
+  it('keeps strokes out of a new auto-layout frame unless the spec includes them', () => {
+    expect((build({ type: 'FRAME', layoutMode: 'VERTICAL' }).tree as any).layout.strokesIncludedInLayout).toBe(false);
+    expect((build({ type: 'FRAME', layoutMode: 'VERTICAL', strokesIncludedInLayout: true }).tree as any).layout.strokesIncludedInLayout).toBe(true);
+    expect((build({ type: 'FRAME' }).tree as any).layout).toBeUndefined();
+    expect(update([{ nodeId: '1:1', layoutMode: 'VERTICAL' }]).updates[0].spec.layout).toEqual({ layoutMode: 'VERTICAL' });
+  });
+
+  it('keeps a new drop shadow in front of the node unless the spec says otherwise', () => {
+    const shadow = (extra: object) =>
+      (build({ type: 'RECTANGLE', effects: [{ type: 'DROP_SHADOW', color: '#000', ...extra }] }).tree as any).props.effects[0];
+    expect(shadow({}).showShadowBehindNode).toBe(false);
+    expect(shadow({ showShadowBehindNode: true }).showShadowBehindNode).toBe(true);
+  });
+
+  it('finds where the box of a rotated node starts', () => {
+    expect(rotatedBoxOffset(100, 40, 30)).toEqual({ x: 0, y: -50 });
+    expect(rotatedBoxOffset(80, 30, -45)).toEqual({ x: -21.21, y: 0 });
+    expect(rotatedBoxOffset(10, 20, 0)).toEqual({ x: 0, y: 0 });
+  });
+
+  it('builds a group unrotated and places it by its box, because its children carry the rotation', () => {
+    const { tree, warnings } = build({
+      type: 'GROUP',
+      rotation: 30,
+      width: 100,
+      height: 40,
+      localPosition: { x: 60, y: 40 },
+      constraints: { horizontal: 'CENTER', vertical: 'TOP' },
+      absoluteBoundingBox: { x: 0, y: 0, width: 106.6, height: 84.64 },
+      children: [
+        { type: 'RECTANGLE', rotation: 30, width: 100, height: 40, parentOffset: { x: 0, y: 0 } },
+        { type: 'GROUP', rotation: 45, parentOffset: { x: 5, y: 6 }, children: [{ type: 'ELLIPSE', rotation: 45, width: 5, height: 5, parentOffset: { x: 1, y: 1 } }] },
+      ],
+    });
+    const root = tree as any;
+    expect(warnings).toEqual([]);
+    expect(root.rotation).toBeUndefined();
+    expect(root.constraints).toBeUndefined();
+    expect(root.size).toBeUndefined();
+    expect(root.position).toEqual({ x: 60, y: -10, byBox: false, explicit: false });
+    expect(root.children[0].rotation).toBe(30);
+    expect(root.children[1].rotation).toBeUndefined();
+    expect(root.children[1].position).toEqual({ x: 5, y: 6, byBox: false, explicit: false });
+  });
+
+  it('sets the rotation of clones and instances even when it is 0', () => {
+    const { tree } = build({
+      type: 'FRAME',
+      children: [
+        { type: 'VECTOR', id: '7:1' },
+        { type: 'INSTANCE', id: '7:2', rotation: 15 },
+        { type: 'RECTANGLE' },
+      ],
+    });
+    expect((tree as any).children.map((child: any) => child.rotation)).toEqual([0, 15, undefined]);
   });
 
   it('recovers the size of a rotated node from its bounding box', () => {

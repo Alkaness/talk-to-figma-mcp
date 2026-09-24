@@ -490,10 +490,10 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "rotate_node",
     {
-      description: "Rotate a node in Figma by a specified angle in degrees (clockwise). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
+      description: "Rotate a node in Figma by a specified angle in degrees (counterclockwise, as Figma's rotation field). Use relative=true to add to the current rotation instead of setting an absolute value. Note: locked nodes can still be rotated — the Plugin API bypasses the UI lock by design.",
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to rotate"),
-      angle: z.coerce.number().describe("Rotation angle in degrees (clockwise)"),
+      angle: z.coerce.number().describe("Rotation angle in degrees (counterclockwise)"),
       relative: coerceBoolean.optional().describe("If true, add angle to current rotation instead of setting absolute value (default: false)"),
     },
     },

@@ -132,6 +132,21 @@ function copyProps(source: any, target: Record<string, any>, keys: string[]): vo
   }
 }
 
+/**
+ * The REST format stores an image's contrast at 0.3 times the Plugin API
+ * value (0.9 exports as 0.27; measured on the JSON_REST_V1 export). The other
+ * filters use the Plugin API's -1 to 1 scale already. Returned in Plugin API
+ * units, which set_image_filters and create_node_tree take.
+ */
+function pluginImageFilters(filters: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value !== "number") continue;
+    out[key] = key === "contrast" ? round(Math.max(-1, Math.min(1, value / 0.3)), 4) : round(value, 4);
+  }
+  return out;
+}
+
 /** Visible paints only, colors as hex, defaults dropped. imageRef is kept: it is the hash get_asset takes. */
 function compactPaints(paints: unknown): Record<string, any>[] {
   if (!Array.isArray(paints)) return [];
@@ -149,6 +164,8 @@ function compactPaints(paints: unknown): Record<string, any>[] {
           out.gradientStops = value.map((stop: any) => ({ position: round(stop.position, 4), color: rgbaToHex(stop.color) }));
         } else if (key === "opacity") {
           out.opacity = round(value as number);
+        } else if (key === "filters" && value && typeof value === "object") {
+          out.filters = pluginImageFilters(value as Record<string, number>);
         } else {
           // Gradient handles and image transforms are 0-1 fractions: keep 4 decimals.
           out[key] = roundDeep(value, 4);
@@ -244,10 +261,13 @@ function buildTextRuns(characters: unknown, overrides: unknown, table: unknown):
  *   coordinates, which are relative to the group's parent.
  * - Children deeper than `maxDepth` become `{ id, name, type }` stubs and the
  *   parent gets `_childrenTruncated: true`.
- * - `rotation` is copied as given. The plugin sets it to the Plugin API value
- *   in degrees before export (see annotateRotation in code.js), because the
- *   REST format does not document its unit; rest_get_file passes the REST
- *   value through.
+ * - `rotation` is in degrees, counterclockwise, as the Plugin API reports it.
+ *   The REST format stores radians with the opposite sign: the plugin
+ *   replaces the value before export (annotateRotation in code.js), and
+ *   rest_get_file converts it with restRotationToDegrees.
+ * - A rotated node also gets `width` and `height` before rotation, from the
+ *   REST `size` field, which the plugin adds. Without them the size must be
+ *   derived from the rotated box, which fails near 45 degrees.
  *
  * @param node - The node in REST format
  * @param maxDepth - Child levels returned in full detail (default: all)
@@ -287,6 +307,11 @@ export function filterFigmaNode(
 
   if (typeof node.rotation === "number" && round(node.rotation, 4) !== 0) {
     filtered.rotation = round(node.rotation, 4);
+    // The box of a rotated node is larger than the node itself.
+    if (node.size && typeof node.size.x === "number" && typeof node.size.y === "number") {
+      filtered.width = round(node.size.x);
+      filtered.height = round(node.size.y);
+    }
   }
 
   if (!isNoOp("layoutMode", node.layoutMode)) {
@@ -356,6 +381,21 @@ export function filterFigmaNode(
   }
 
   return filtered;
+}
+
+/**
+ * Convert the `rotation` of a REST API node tree to the degrees that
+ * get_node_info reports. The REST API stores radians with the opposite sign:
+ * a node rotated 30 degrees in Figma has rotation -0.5236. Measured on the
+ * plugin's JSON_REST_V1 export, which uses the same format. Modifies the tree
+ * in place and returns it.
+ */
+export function restRotationToDegrees<T>(node: T): T {
+  const doc = node as any;
+  if (!doc || typeof doc !== "object") return node;
+  if (typeof doc.rotation === "number") doc.rotation = (-doc.rotation * 180) / Math.PI;
+  if (Array.isArray(doc.children)) doc.children.forEach((child: unknown) => restRotationToDegrees(child));
+  return node;
 }
 
 /**

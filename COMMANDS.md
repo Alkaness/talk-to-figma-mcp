@@ -34,7 +34,7 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 |---|---|
 | `get_document_info` | Returns detailed information about the current document. |
 | `get_selection` | Returns information about the current selection. |
-| `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`; `rotation` is in degrees. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). The result is a valid `create_node_tree` spec. |
+| `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`; `rotation` is in degrees, counterclockwise, and a rotated node also has its `width` and `height` before rotation. Image `filters` use the scale that `set_image_filters` takes. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). The result is a valid `create_node_tree` spec. |
 | `get_nodes_info` | Returns several nodes in the same format as `get_node_info`, exported in batches of 5. Accepts a `depth` limit. |
 | `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection; `recursive=true` covers the subtree. |
 | `get_styles` | Returns all local styles in the document. |
@@ -59,13 +59,15 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 | `create_node_tree` | Builds a node and its whole subtree under `parentId`, optionally at `index`. Returns the ID of every created node, keyed by the node's `key`, else its source `id`, else its path (`tree.children[0]`), and a warning for each property that was not applied. |
 | `update_nodes` | Changes the given properties of several existing nodes. Each update is `{ nodeId, ...fields }`. Returns a result per node and the warnings. |
 
-1. **Fields.** The fields are those of `get_node_info` output, plus `key`, `width`, `height`, `x`, `y` and `svg`. Colors are hex strings (`"#0F172A"`, or `"#0F172A80"` with alpha) or `{ r, g, b, a }`. `rotation` is in degrees.
-2. **Omitted fields** mean what they mean in `get_node_info` output: new frames, rectangles and ellipses have no fill, and frames do not clip. Text without fills is black; text without `fontFamily` uses Inter.
-3. **Fonts** are resolved against the fonts Figma has. `fontWeight` selects the family's own style name (Inter "Semi Bold", Poppins "SemiBold"). When the exact weight is missing, the closest one is used and a warning names it. A `fontStyle` the family lacks is an error that lists the available styles.
-4. **Position.** Children of an auto-layout frame are placed by the layout. `x` and `y` apply outside auto-layout and to children with `layoutPositioning: "ABSOLUTE"`.
-5. **Other node types.** `VECTOR`, `BOOLEAN_OPERATION`, `STAR` and other types without a builder take `svg` with their markup, or are cloned when `id` names a node in the same file. An `INSTANCE` is cloned from its source when the source exists, which keeps its overrides; otherwise it is created from `componentId`.
-6. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
-7. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
+1. **Fields.** The fields are those of `get_node_info` output, plus `key`, `width`, `height`, `x`, `y` and `svg`. Colors are hex strings (`"#0F172A"`, or `"#0F172A80"` with alpha) or `{ r, g, b, a }`. `rotation` is in degrees, counterclockwise; `width` and `height` are the size before rotation.
+2. **Omitted fields** mean what they mean in `get_node_info` output: new frames, rectangles and ellipses have no fill, frames do not clip, auto-layout frames do not include strokes in the layout, and drop shadows are not shown behind the node. Text without fills is black; text without `fontFamily` uses Inter.
+3. **Sizing modes.** An auto-layout frame without `primaryAxisSizingMode` or `counterAxisSizingMode` hugs its content on that axis, unless the axis has `layoutSizingHorizontal`/`layoutSizingVertical` FIXED or FILL, or a `width`/`height`.
+4. **Fonts** are resolved against the fonts Figma has. `fontWeight` selects the family's own style name (Inter "Semi Bold", Poppins "SemiBold"). When the exact weight is missing, the closest one is used and a warning names it. A `fontStyle` the family lacks is an error that lists the available styles; an unknown family is an error that names similarly spelled families.
+5. **Position.** Children of an auto-layout frame are placed by the layout. `x` and `y` apply outside auto-layout and to children with `layoutPositioning: "ABSOLUTE"`. Positions and constraints are applied after the whole tree is built, when every frame has its final size.
+6. **Groups** are built from their children. The children's rotation already includes the group's, so the new group is not rotated, and its box is the union of its children. Figma has no constraints on groups.
+7. **Other node types.** `VECTOR`, `BOOLEAN_OPERATION`, `STAR` and other types without a builder take `svg` with their markup, or are cloned when `id` names a node in the same file. An `INSTANCE` is cloned from its source when the source exists, which keeps its overrides; otherwise it is created from `componentId`.
+8. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
+9. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
 
 ## 4. Creation (12)
 
@@ -97,7 +99,7 @@ All creation tools require `parentId`. See section 18.
 | `set_image` | Sets an image fill from base64 data (PNG, JPEG, GIF, WebP; about 5 MB maximum after decoding). |
 | `move_node` | Moves a node. Coordinates are local to the parent. |
 | `resize_node` | Resizes a node. |
-| `rotate_node` | Rotates a node clockwise by degrees. `relative=true` adds to the current rotation. |
+| `rotate_node` | Rotates a node counterclockwise by degrees. `relative=true` adds to the current rotation. |
 | `reorder_node` | Changes the layer order of a node within its parent. |
 | `delete_node` | Deletes a node. |
 | `rename_node` | Renames a node. |

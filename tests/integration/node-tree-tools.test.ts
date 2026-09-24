@@ -6,7 +6,7 @@
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
-import { registerNodeTreeTools } from '../../src/talk_to_figma_mcp/tools/node-tree-tools';
+import { NO_FONTS_MESSAGE, registerNodeTreeTools } from '../../src/talk_to_figma_mcp/tools/node-tree-tools';
 import { filterFigmaNode } from '../../src/talk_to_figma_mcp/utils/figma-helpers';
 import { pricingCardNode } from '../fixtures/rest-nodes';
 
@@ -117,6 +117,26 @@ describe('create_node_tree', () => {
     expect(mockSend).toHaveBeenCalledTimes(1);
     expect(result.isError).toBe(true);
     expect(textOf(result)).toContain('font family "Nope" is not available in Figma');
+  });
+
+  it('passes similar families from the plugin into the error', async () => {
+    mockSend.mockResolvedValueOnce({ fonts: { Robto: null }, suggestions: { Robto: ['Roboto'] }, fontCount: 120 });
+
+    const result = await call('create_node_tree', { parentId: '0:1', tree: { type: 'TEXT', characters: 'a', style: { fontFamily: 'Robto' } } });
+
+    expect(textOf(result)).toBe(
+      'Error creating the node tree: at tree: font family "Robto" is not available in Figma. Similar families: Roboto'
+    );
+  });
+
+  it('says so when Figma lists no fonts at all', async () => {
+    mockSend.mockResolvedValueOnce({ fonts: { Inter: null }, suggestions: { Inter: [] }, fontCount: 0 });
+
+    const result = await call('create_node_tree', { parentId: '0:1', tree: { type: 'TEXT', characters: 'a' } });
+
+    expect(mockSend).toHaveBeenCalledTimes(1);
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toBe(`Error creating the node tree: ${NO_FONTS_MESSAGE}`);
   });
 
   it('tells the user to update an older plugin', async () => {

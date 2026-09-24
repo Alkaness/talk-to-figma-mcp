@@ -267,6 +267,9 @@ export interface FontName {
  */
 export type FontCatalog = Record<string, { family: string; styles: string[] } | null>;
 
+/** Similarly named families for each family Figma does not have. */
+export type FontSuggestions = Record<string, string[]>;
+
 const NATIVE_TYPES = ["FRAME", "COMPONENT", "RECTANGLE", "ELLIPSE", "LINE", "TEXT"] as const;
 type NativeType = (typeof NATIVE_TYPES)[number];
 
@@ -319,6 +322,7 @@ type Mode = "create" | "update";
 interface Context {
   mode: Mode;
   catalog: FontCatalog;
+  suggestions: FontSuggestions;
   fonts: Map<string, FontName>;
   warnings: string[];
   keys: Set<string>;
@@ -363,8 +367,8 @@ function labelOf(path: string, name: string | undefined): string {
   return name ? `${path} ("${name}")` : path;
 }
 
-function newContext(mode: Mode, catalog: FontCatalog): Context {
-  return { mode, catalog, fonts: new Map(), warnings: [], keys: new Set() };
+function newContext(mode: Mode, catalog: FontCatalog, suggestions: FontSuggestions): Context {
+  return { mode, catalog, suggestions, fonts: new Map(), warnings: [], keys: new Set() };
 }
 
 // ─── Fonts ─────────────────────────────────────────────────────────────────
@@ -425,7 +429,9 @@ function resolveFont(
 ): FontName {
   const entry = ctx.catalog[family];
   if (!entry) {
-    throw specError(where, `font family "${family}" is not available in Figma. Check the spelling, or install the font`);
+    const similar = ctx.suggestions[family] ?? [];
+    const hint = similar.length > 0 ? `. Similar families: ${similar.join(", ")}` : ". Check the spelling, or install the font";
+    throw specError(where, `font family "${family}" is not available in Figma${hint}`);
   }
   let style: string;
   if (wanted.fontStyle !== undefined) {
@@ -587,9 +593,8 @@ function effectsOf(effects: EffectInput[], where: string, ctx: Context): Record<
           visible: effect.visible ?? true,
           blendMode: effect.blendMode ?? "NORMAL",
         };
-        if (effect.type === "DROP_SHADOW" && effect.showShadowBehindNode !== undefined) {
-          shadow.showShadowBehindNode = effect.showShadowBehindNode;
-        }
+        // get_node_info omits false, but Figma shows new shadows behind the node.
+        if (effect.type === "DROP_SHADOW") shadow.showShadowBehindNode = effect.showShadowBehindNode ?? false;
         out.push(shadow);
         break;
       }
@@ -880,7 +885,34 @@ function layoutOf(spec: NodeFields, label: string, ctx: Context): { layout?: Rec
   const layout: Record<string, unknown> = {};
   if (mode !== undefined) layout.layoutMode = mode;
   for (const key of given) layout[key] = fields[key];
+  if (ctx.mode === "create" && mode !== undefined && AUTO_LAYOUT_MODES.has(mode)) {
+    Object.assign(layout, defaultSizingModes(spec, mode, layout));
+    // get_node_info omits false, but new auto-layout frames include strokes in the layout.
+    if (layout.strokesIncludedInLayout === undefined) layout.strokesIncludedInLayout = false;
+  }
   return { layout: nonEmpty(layout), mode };
+}
+
+/**
+ * The sizing modes a new auto-layout frame gets when the spec omits them.
+ * Figma's own default is to hug the primary axis and fix the counter axis,
+ * while get_node_info omits a mode that is AUTO. So an omitted mode follows
+ * the axis's layoutSizing (HUG hugs; FIXED and FILL are fixed), then a width
+ * or height given for that axis (fixed), and otherwise hugs, as in the reader.
+ */
+function defaultSizingModes(spec: NodeFields, mode: string, layout: Record<string, unknown>): Record<string, string> {
+  const horizontal = mode === "HORIZONTAL";
+  const axes = [
+    { key: "primaryAxisSizingMode", sizing: horizontal ? spec.layoutSizingHorizontal : spec.layoutSizingVertical, side: horizontal ? spec.width : spec.height },
+    { key: "counterAxisSizingMode", sizing: horizontal ? spec.layoutSizingVertical : spec.layoutSizingHorizontal, side: horizontal ? spec.height : spec.width },
+  ];
+  const out: Record<string, string> = {};
+  for (const { key, sizing, side } of axes) {
+    if (layout[key] !== undefined) continue;
+    if (sizing !== undefined) out[key] = sizing === "HUG" ? "AUTO" : "FIXED";
+    else out[key] = side !== undefined ? "FIXED" : "AUTO";
+  }
+  return out;
 }
 
 function canHug(create: CreateStep | undefined, ownLayout: string | undefined): boolean {
@@ -930,8 +962,20 @@ function childPropsOf(
   return nonEmpty(out);
 }
 
+/** Where the bounding box of a rotated node starts, relative to its x and y (the transform origin). */
+export function rotatedBoxOffset(width: number, height: number, rotation: number): { x: number; y: number } {
+  const radians = (rotation * Math.PI) / 180;
+  const c = Math.cos(radians);
+  const s = Math.sin(radians);
+  // Figma rotates counterclockwise on a y-down canvas: (x, y) -> (x cos + y sin, -x sin + y cos).
+  const xs = [0, width * c, height * s, width * c + height * s];
+  const ys = [0, -width * s, height * c, height * c - width * s];
+  return { x: round(Math.min(...xs), 2) + 0, y: round(Math.min(...ys), 2) + 0 };
+}
+
 function positionOf(
   spec: NodeFields,
+  create: CreateStep | undefined,
   isRoot: boolean,
   parentLayout: string | undefined,
   childProps: Record<string, unknown> | undefined,
@@ -941,7 +985,17 @@ function positionOf(
   const explicit = spec.x !== undefined || spec.y !== undefined;
   let base: { x: number; y: number } | undefined;
   let byBox = false;
-  if (ctx.mode === "create") {
+  if (ctx.mode === "create" && create?.kind === "group") {
+    // A new group is not rotated (see ownPropsOf), so its x and y are where its box starts.
+    if (!isRoot && spec.parentOffset) base = spec.parentOffset;
+    else if (spec.localPosition) {
+      base = spec.localPosition;
+      if (spec.rotation && spec.width !== undefined && spec.height !== undefined) {
+        const offset = rotatedBoxOffset(spec.width, spec.height, spec.rotation);
+        base = { x: round(base.x + offset.x, 2), y: round(base.y + offset.y, 2) };
+      }
+    }
+  } else if (ctx.mode === "create") {
     if (spec.localPosition) base = spec.localPosition;
     else if (!isRoot && spec.parentOffset) {
       base = spec.parentOffset;
@@ -975,8 +1029,12 @@ function ownPropsOf(
 ): { node: Omit<PluginNodeSpec, "label">; ownLayout?: string } {
   const node: Omit<PluginNodeSpec, "label"> = {};
   if (spec.name !== undefined) node.name = spec.name;
+  // A new group takes its size, rotation and place from its children: the
+  // children's rotation already includes the group's. Figma has no
+  // constraints on groups.
+  const newGroup = create?.kind === "group";
 
-  const dims = dimensionsOf(spec, label, ctx);
+  const dims = newGroup ? {} : dimensionsOf(spec, label, ctx);
   const isText = create === undefined || (create.kind === "new" && create.type === "TEXT");
   const hasText = spec.characters !== undefined || spec.style !== undefined || spec.textRuns !== undefined;
   if (isText && (hasText || create !== undefined)) {
@@ -994,15 +1052,19 @@ function ownPropsOf(
   if (layout) node.layout = layout;
   const childProps = childPropsOf(spec, create, mode, parentLayout, label, ctx);
   if (childProps) node.childProps = childProps;
-  const position = positionOf(spec, isRoot, parentLayout, childProps, label, ctx);
+  const position = positionOf(spec, create, isRoot, parentLayout, childProps, label, ctx);
   if (position) node.position = position;
-  if (spec.constraints) {
+  if (spec.constraints && !newGroup) {
     node.constraints = {
       horizontal: HORIZONTAL_CONSTRAINTS[spec.constraints.horizontal],
       vertical: VERTICAL_CONSTRAINTS[spec.constraints.vertical],
     };
   }
-  if (spec.rotation !== undefined && (spec.rotation !== 0 || ctx.mode === "update")) node.rotation = spec.rotation;
+  // A clone keeps its source's transform, which inside a rotated group is
+  // relative to the group: set its rotation even when it is 0.
+  const copied = create?.kind === "clone" || create?.kind === "instance";
+  if (copied && !newGroup) node.rotation = spec.rotation ?? 0;
+  else if (spec.rotation !== undefined && !newGroup && (spec.rotation !== 0 || ctx.mode === "update")) node.rotation = spec.rotation;
   return { node, ownLayout: mode };
 }
 
@@ -1051,9 +1113,10 @@ function normalizeNode(
  */
 export function normalizeNodeTree(
   spec: NodeSpec,
-  catalog: FontCatalog
+  catalog: FontCatalog,
+  suggestions: FontSuggestions = {}
 ): { tree: PluginNodeSpec | null; fonts: FontName[]; warnings: string[] } {
-  const ctx = newContext("create", catalog);
+  const ctx = newContext("create", catalog, suggestions);
   const tree = normalizeNode(spec, "tree", undefined, true, ctx);
   return { tree, fonts: [...ctx.fonts.values()], warnings: ctx.warnings };
 }
@@ -1061,9 +1124,10 @@ export function normalizeNodeTree(
 /** Translate update_nodes updates for the plugin. */
 export function normalizeNodeUpdates(
   updates: NodeUpdate[],
-  catalog: FontCatalog
+  catalog: FontCatalog,
+  suggestions: FontSuggestions = {}
 ): { updates: Array<{ nodeId: string; spec: PluginNodeSpec }>; fonts: FontName[]; warnings: string[] } {
-  const ctx = newContext("update", catalog);
+  const ctx = newContext("update", catalog, suggestions);
   const out = updates.map((update, i) => {
     const label = `updates[${i}] (node ${update.nodeId})`;
     if (update.children !== undefined) {
