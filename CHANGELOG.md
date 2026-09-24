@@ -51,6 +51,10 @@ The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > De
 - `batch_operations` returns the ID of each node its operations created. Its description states that its params use the plugin's own shape.
 - The `design_strategy` prompt now teaches auto-layout with FILL and HUG sizing, one `create_node_tree` call, and one visual check at the end. It no longer teaches x/y placement with a `get_node_info` call after every creation. The server instructions point to the new tools.
 
+### Tests
+- **The plugin code now has automated tests.** `tests/plugin/node-tree.test.ts` runs `code.js` in a `vm` context against a fake Plugin API (`tests/plugin/fake-figma.ts`), with specs from the server's real normalizer. The fake enforces the rules the build order depends on and lays out auto-layout frames. 14 cases cover the pricing card round trip, the `design_strategy` example, placement after HUG growth, groups, rotated groups, clones, failure cleanup, `update_nodes`, `batch_operations` and `get_available_fonts`. Each of 9 deliberate breakages of the build order or of the fixes above makes at least one case fail.
+- `tests/plugin/syntax.test.ts` keeps `code.js` free of `?.`, `??`, object spread and `Promise.allSettled`.
+
 ## [1.5.0] - 2026-09-23
 
 First release of the standalone repository [Alkaness/talk-to-figma-mcp](https://github.com/Alkaness/talk-to-figma-mcp).

@@ -113,7 +113,7 @@ Run `bun run build` and restart Claude Desktop after each change to the server.
 
 | Command | Runs |
 |---|---|
-| `bun run test` | Jest suite (`tests/unit/utils`, `tests/integration`) |
+| `bun run test` | Jest suite (`tests/unit/utils`, `tests/integration`, `tests/plugin`) |
 | `bun run test:socket` | Relay tests (`tests/unit/*.test.ts`, `bun:test`) |
 | `bun run test:all` | Typecheck, then both suites. CI runs this on Node 20 and 22. |
 | `bun run test:watch` | Jest in watch mode |
@@ -125,7 +125,8 @@ To add a test:
 
 1. **Utility:** add `tests/unit/utils/<name>.test.ts`.
 2. **Tool handler:** add a file to `tests/integration/` and use the data in `tests/fixtures/`.
-3. **Relay behavior:** extend `tests/unit/relay-disconnect.test.ts`. It starts the real relay with `startRelay({ port: 0 })`. Any new `bun:test` file must also be added to `testPathIgnorePatterns` in `jest.config.cjs` and to the `test:socket` script.
+3. **Plugin code:** extend `tests/plugin/node-tree.test.ts`. It runs `src/claude_mcp_plugin/code.js` in a `vm` context against the fake Plugin API in `tests/plugin/fake-figma.ts`. The fake throws where Figma throws: FILL and ABSOLUTE need an auto-layout parent, HUG needs an auto-layout frame or a text node, and a font must be loaded before `fontName`, `characters` or a range style is set. It also lays out auto-layout frames and applies constraints when a frame changes size. When Figma behaves differently from the fake, change the fake to match what Figma did. `tests/plugin/syntax.test.ts` rejects `?.`, `??`, object spread and `Promise.allSettled` in `code.js`.
+4. **Relay behavior:** extend `tests/unit/relay-disconnect.test.ts`. It starts the real relay with `startRelay({ port: 0 })`. Any new `bun:test` file must also be added to `testPathIgnorePatterns` in `jest.config.cjs` and to the `test:socket` script.
 
 ### 5.2 Guided integration test
 
