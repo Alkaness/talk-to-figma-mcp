@@ -257,8 +257,8 @@ function buildTextRuns(characters: unknown, overrides: unknown, table: unknown):
  *   `{ id, name, type, visible: false }` stub; a hidden root is serialized in
  *   full with `visible: false`.
  * - `parentOffset` is the position of the node's bounding box relative to its
- *   parent's (CSS left/top). Inside a GROUP it differs from move_node
- *   coordinates, which are relative to the group's parent.
+ *   parent's (CSS left/top). Inside a GROUP it differs from x and y,
+ *   which are relative to the group's parent.
  * - Children deeper than `maxDepth` become `{ id, name, type }` stubs and the
  *   parent gets `_childrenTruncated: true`.
  * - `rotation` is in degrees, counterclockwise, as the Plugin API reports it.

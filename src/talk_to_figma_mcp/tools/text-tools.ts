@@ -6,6 +6,7 @@ import { parseCommandResult } from "../utils/command-results";
 import { filterFigmaNode } from "../utils/figma-helpers";
 import { pickFontStyle } from "../utils/node-spec";
 import { NO_FONTS_MESSAGE } from "./node-tree-tools";
+import { deprecated } from "../utils/deprecation";
 
 /**
  * The style name for a weight in the text node's own family, resolved the way
@@ -41,7 +42,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_text_content",
     {
-      description: "Set the text content of an existing text node in Figma",
+      description: deprecated("set_text_content", "Set the text content of an existing text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       text: z.string().describe("New text content"),
@@ -80,7 +81,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_multiple_text_contents",
     {
-      description: "Set multiple text contents parallelly in a node",
+      description: deprecated("set_multiple_text_contents", "Set multiple text contents parallelly in a node"),
       inputSchema: {
       nodeId: z
         .string()
@@ -183,7 +184,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_font_name",
     {
-      description: "Set the font name and style of a text node in Figma",
+      description: deprecated("set_font_name", "Set the font name and style of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       family: z.string().describe("Font family name"),
@@ -224,7 +225,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_font_size",
     {
-      description: "Set the font size of a text node in Figma",
+      description: deprecated("set_font_size", "Set the font size of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       fontSize: z.coerce.number().positive().describe("Font size in pixels"),
@@ -343,7 +344,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_line_height",
     {
-      description: "Set the line height of a text node in Figma",
+      description: deprecated("set_line_height", "Set the line height of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       lineHeight: z.coerce.number().describe("Line height value"),
@@ -384,7 +385,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_paragraph_spacing",
     {
-      description: "Set the paragraph spacing of a text node in Figma",
+      description: deprecated("set_paragraph_spacing", "Set the paragraph spacing of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       paragraphSpacing: z.coerce.number().describe("Paragraph spacing value in pixels"),
@@ -423,7 +424,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_text_case",
     {
-      description: "Set the text case of a text node in Figma",
+      description: deprecated("set_text_case", "Set the text case of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textCase: z.enum(["ORIGINAL", "UPPER", "LOWER", "TITLE"]).describe("Text case type"),
@@ -462,7 +463,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_text_decoration",
     {
-      description: "Set the text decoration of a text node in Figma",
+      description: deprecated("set_text_decoration", "Set the text decoration of a text node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textDecoration: z.enum(["NONE", "UNDERLINE", "STRIKETHROUGH"]).describe("Text decoration type"),
@@ -631,7 +632,7 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_text_align",
     {
-      description: "Set the text alignment of a text node in Figma. Use textAlignHorizontal RIGHT for RTL/Arabic text.",
+      description: deprecated("set_text_align", "Set the text alignment of a text node in Figma. Use textAlignHorizontal RIGHT for RTL/Arabic text."),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       textAlignHorizontal: z.enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"]).optional().describe("Horizontal text alignment (LEFT, CENTER, RIGHT, JUSTIFIED). Use RIGHT for Arabic/RTL text."),

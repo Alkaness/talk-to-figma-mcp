@@ -69,16 +69,42 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 8. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
 9. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
 
+10. **Deprecated tools.** The 21 tools below are deprecated because these two tools cover them. They still work, and each description names its replacement; they will be removed in a later release. Removing them shrinks the `tools/list` response from 104 tools and 88,711 characters to 83 tools and 67,558 characters, 24% less (measured without a REST token).
+
+| Deprecated tool | Replacement |
+|---|---|
+| `set_fill_color` | `update_nodes` with `fills: ["#RRGGBB"]` |
+| `set_stroke_color` | `update_nodes` with `strokes`, `strokeWeight` |
+| `set_gradient` | `update_nodes` with `fills: [{ type: "GRADIENT_LINEAR", gradientStops, gradientTransform }]` |
+| `set_effects` | `update_nodes` with `effects` |
+| `set_auto_layout` | `update_nodes` with `layoutMode`, padding, `itemSpacing`, alignment |
+| `move_node` | `update_nodes` with `x`, `y` |
+| `resize_node` | `update_nodes` with `width`, `height` |
+| `rename_node` | `update_nodes` with `name` |
+| `set_font_name` | `update_nodes` with `style.fontFamily`, `style.fontStyle` |
+| `set_font_size` | `update_nodes` with `style.fontSize` |
+| `set_line_height` | `update_nodes` with `style.lineHeightPx`, `style.lineHeightPercentFontSize` or `style.lineHeightUnit: "INTRINSIC_%"` |
+| `set_paragraph_spacing` | `update_nodes` with `style.paragraphSpacing` |
+| `set_text_align` | `update_nodes` with `style.textAlignHorizontal`, `style.textAlignVertical` |
+| `set_text_case` | `update_nodes` with `style.textCase` |
+| `set_text_decoration` | `update_nodes` with `style.textDecoration` |
+| `set_text_content` | `update_nodes` with `characters` |
+| `set_multiple_text_contents` | `update_nodes` with one `{ nodeId, characters }` per text node |
+| `create_frame` | `create_node_tree` |
+| `create_rectangle` | `create_node_tree` |
+| `create_ellipse` | `create_node_tree` |
+| `create_text` | `create_node_tree` |
+
 ## 4. Creation (12)
 
 All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `create_rectangle` | Creates a rectangle. |
-| `create_frame` | Creates a frame. |
-| `create_text` | Creates a text node in Inter. Accepts a fixed `width` for wrapping. For other fonts, use `create_node_tree`. |
-| `create_ellipse` | Creates an ellipse. |
+| `create_rectangle` | Deprecated: use `create_node_tree`. Creates a rectangle. |
+| `create_frame` | Deprecated: use `create_node_tree`. Creates a frame. |
+| `create_text` | Deprecated: use `create_node_tree`. Creates a text node in Inter. Accepts a fixed `width` for wrapping. For other fonts, use `create_node_tree`. |
+| `create_ellipse` | Deprecated: use `create_node_tree`. Creates an ellipse. |
 | `create_polygon` | Creates a polygon. |
 | `create_star` | Creates a star. |
 | `group_nodes` | Groups nodes. |
@@ -92,22 +118,22 @@ All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `set_fill_color` | Sets a solid fill. Alpha defaults to 1; alpha 0 is fully transparent. |
-| `set_stroke_color` | Sets the stroke color. Defaults: opacity 1, weight 1. A weight of 0 is allowed. |
+| `set_fill_color` | Deprecated: use `update_nodes`. Sets a solid fill. Alpha defaults to 1; alpha 0 is fully transparent. |
+| `set_stroke_color` | Deprecated: use `update_nodes`. Sets the stroke color. Defaults: opacity 1, weight 1. A weight of 0 is allowed. |
 | `set_selection_colors` | Recolors every fill and stroke in a node and its descendants, like Figma's "Selection colors". |
-| `set_gradient` | Sets a linear, radial, angular or diamond gradient. Replaces existing fills. |
+| `set_gradient` | Deprecated: use `update_nodes`. Sets a linear, radial, angular or diamond gradient. Replaces existing fills. |
 | `set_image` | Sets an image fill from base64 data (PNG, JPEG, GIF, WebP; about 5 MB maximum after decoding). |
-| `move_node` | Moves a node. Coordinates are local to the parent. |
-| `resize_node` | Resizes a node. |
+| `move_node` | Deprecated: use `update_nodes`. Moves a node. Coordinates are local to the parent. |
+| `resize_node` | Deprecated: use `update_nodes`. Resizes a node. |
 | `rotate_node` | Rotates a node counterclockwise by degrees. `relative=true` adds to the current rotation. |
 | `reorder_node` | Changes the layer order of a node within its parent. |
 | `delete_node` | Deletes a node. |
-| `rename_node` | Renames a node. |
+| `rename_node` | Deprecated: use `update_nodes`. Renames a node. |
 | `set_node_properties` | Sets visibility, lock state and opacity. Omitted properties are unchanged. |
 | `convert_to_frame` | Converts a group or shape into a frame, keeping position, size, styling and children. |
 | `set_corner_radius` | Sets corner radius, per corner if needed. |
-| `set_auto_layout` | Configures auto layout. |
-| `set_effects` | Sets shadows and blurs. |
+| `set_auto_layout` | Deprecated: use `update_nodes`. Configures auto layout. |
+| `set_effects` | Deprecated: use `update_nodes`. Sets shadows and blurs. |
 | `set_effect_style_id` | Applies an effect style. |
 | `set_grid` | Applies column, row or grid layout grids to a frame. |
 | `get_grid` | Reads the layout grids of a frame. |
@@ -121,17 +147,17 @@ All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `set_text_content` | Replaces the text of a text node. |
-| `set_multiple_text_contents` | Replaces the text of several text nodes in one call. |
-| `set_font_name` | Sets font family and style. |
-| `set_font_size` | Sets font size. |
+| `set_text_content` | Deprecated: use `update_nodes`. Replaces the text of a text node. |
+| `set_multiple_text_contents` | Deprecated: use `update_nodes`. Replaces the text of several text nodes in one call. |
+| `set_font_name` | Deprecated: use `update_nodes`. Sets font family and style. |
+| `set_font_size` | Deprecated: use `update_nodes`. Sets font size. |
 | `set_font_weight` | Sets the font weight, resolved to the style name of the node's own family (Inter "Semi Bold", Poppins "SemiBold"). When the family has no style of that weight, the closest one is used and named. Italic is kept. |
 | `set_letter_spacing` | Sets letter spacing. |
-| `set_line_height` | Sets line height. |
-| `set_paragraph_spacing` | Sets paragraph spacing. |
-| `set_text_case` | Sets text case. |
-| `set_text_decoration` | Sets text decoration. |
-| `set_text_align` | Sets horizontal and vertical alignment. Use `RIGHT` for right-to-left text. |
+| `set_line_height` | Deprecated: use `update_nodes`. Sets line height. |
+| `set_paragraph_spacing` | Deprecated: use `update_nodes`. Sets paragraph spacing. |
+| `set_text_case` | Deprecated: use `update_nodes`. Sets text case. |
+| `set_text_decoration` | Deprecated: use `update_nodes`. Sets text decoration. |
+| `set_text_align` | Deprecated: use `update_nodes`. Sets horizontal and vertical alignment. Use `RIGHT` for right-to-left text. |
 | `set_text_style_id` | Applies a text style. |
 | `get_styled_text_segments` | Returns the styled segments of a text node. |
 | `get_fonts_used` | Lists every font family, style and size used in a subtree, with occurrence counts. Defaults to the selection. |

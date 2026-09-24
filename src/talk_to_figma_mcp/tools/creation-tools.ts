@@ -2,6 +2,7 @@ import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceJson } from "../utils/schema-helpers";
+import { deprecated } from "../utils/deprecation";
 
 /**
  * Register creation tools to the MCP server
@@ -13,7 +14,7 @@ export function registerCreationTools(server: McpServer): void {
   server.registerTool(
     "create_rectangle",
     {
-      description: "Create a new rectangle in Figma",
+      description: deprecated("create_rectangle", "Create a new rectangle in Figma"),
       inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
@@ -79,7 +80,7 @@ export function registerCreationTools(server: McpServer): void {
   server.registerTool(
     "create_frame",
     {
-      description: "Create a new frame in Figma",
+      description: deprecated("create_frame", "Create a new frame in Figma"),
       inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
@@ -156,7 +157,7 @@ export function registerCreationTools(server: McpServer): void {
   server.registerTool(
     "create_text",
     {
-      description: "Create a new text element in Figma",
+      description: deprecated("create_text", "Create a new text element in Figma"),
       inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),
@@ -236,7 +237,7 @@ export function registerCreationTools(server: McpServer): void {
   server.registerTool(
     "create_ellipse",
     {
-      description: "Create a new ellipse in Figma",
+      description: deprecated("create_ellipse", "Create a new ellipse in Figma"),
       inputSchema: {
       x: z.coerce.number().describe("X position (local coordinates, relative to parent)"),
       y: z.coerce.number().describe("Y position (local coordinates, relative to parent)"),

@@ -113,7 +113,7 @@ export function registerPrompts(server: McpServer): void {
 
 3. Change existing nodes:
    - Use update_nodes to change several properties or several nodes at once.
-   - Use set_text_content or set_multiple_text_contents to replace text only.
+   - To replace only the text, pass { nodeId, characters } for each text node to update_nodes.
 
 4. Check once, at the end:
    - Read the warnings in the result. Each one names a node and what was not applied.
@@ -226,10 +226,9 @@ get_node_info(nodeId: "node-id")  // optional
 clone_node(nodeId: "selected-node-id", x: [new-x], y: [new-y])
 
 // Replace text chunk by chunk
-set_multiple_text_contents(
-  nodeId: "parent-node-id", 
-  text: [
-    { nodeId: "node-id-1", text: "New text 1" },
+update_nodes(
+  updates: [
+    { nodeId: "node-id-1", characters: "New text 1" },
     // More nodes in this chunk...
   ]
 )
@@ -345,7 +344,7 @@ For each issue, report the node name + id, the rule, the measured value, and a c
 6. **Spacing & density** — adequate spacing so targets and text don't collide.
 
 ## Step 3 — Report
-Produce a prioritized list grouped by severity (Critical / Serious / Minor), each with: node, problem, measured vs. required, and the exact change (e.g. "darken text from #8A8A8A to #595959 for 4.6:1"). Offer to apply the fixes with the modify tools (set_fill_color, set_font_size, resize_node, etc.) if the user approves.`,
+Produce a prioritized list grouped by severity (Critical / Serious / Minor), each with: node, problem, measured vs. required, and the exact change (e.g. "darken text from #8A8A8A to #595959 for 4.6:1"). Offer to apply the fixes with update_nodes (fills, style.fontSize, width and height) if the user approves.`,
             },
           },
         ],

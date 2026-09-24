@@ -4,6 +4,7 @@ import { sendCommandToFigma } from "../utils/websocket";
 import { applyColorDefaults, applyDefault, FIGMA_DEFAULTS } from "../utils/defaults";
 import { Color } from "../types/color";
 import { coerceJson, coerceBoolean } from "../utils/schema-helpers";
+import { deprecated } from "../utils/deprecation";
 
 /**
  * Register modification tools to the MCP server
@@ -15,7 +16,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_fill_color",
     {
-      description: "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent.",
+      description: deprecated("set_fill_color", "Set the fill color of a node in Figma. Alpha component defaults to 1 (fully opaque) if not specified. Use alpha 0 for fully transparent."),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
@@ -66,7 +67,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_stroke_color",
     {
-      description: "Set the stroke color of a node in Figma (defaults: opacity 1, weight 1)",
+      description: deprecated("set_stroke_color", "Set the stroke color of a node in Figma (defaults: opacity 1, weight 1)"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
@@ -171,7 +172,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "move_node",
     {
-      description: "Move a node to a new position in Figma",
+      description: deprecated("move_node", "Move a node to a new position in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to move"),
       x: z.coerce.number().describe("New X position (local coordinates, relative to parent)"),
@@ -208,7 +209,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "resize_node",
     {
-      description: "Resize a node in Figma",
+      description: deprecated("resize_node", "Resize a node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to resize"),
       width: z.coerce.number().positive().describe("New width"),
@@ -331,7 +332,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_auto_layout",
     {
-      description: "Configure auto layout properties for a node in Figma",
+      description: deprecated("set_auto_layout", "Configure auto layout properties for a node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to configure auto layout"),
       layoutMode: z.enum(["HORIZONTAL", "VERTICAL", "NONE"]).describe("Layout direction"),
@@ -390,7 +391,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_effects",
     {
-      description: "Set the visual effects of a node in Figma",
+      description: deprecated("set_effects", "Set the visual effects of a node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       effects: coerceJson(z.array(
@@ -654,7 +655,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_gradient",
     {
-      description: "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color).",
+      description: deprecated("set_gradient", "Set a gradient fill on a node in Figma. Supports linear, radial, angular, and diamond gradients. Replaces all existing fills (same behavior as set_fill_color)."),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       type: z.enum(["GRADIENT_LINEAR", "GRADIENT_RADIAL", "GRADIENT_ANGULAR", "GRADIENT_DIAMOND"]).describe("Gradient type"),
@@ -986,7 +987,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "rename_node",
     {
-      description: "Rename a node (frame, component, group, etc.) in Figma",
+      description: deprecated("rename_node", "Rename a node (frame, component, group, etc.) in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to rename"),
       name: z.string().describe("The new name for the node"),

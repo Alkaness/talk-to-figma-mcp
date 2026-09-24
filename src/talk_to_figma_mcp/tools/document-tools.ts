@@ -99,7 +99,7 @@ export function registerDocumentTools(server: McpServer): void {
         const result = await sendCommandToFigma("get_node_info", { nodeId, depth: depth ?? 1 });
         const filtered = filterFigmaNode(result, depth ?? 1);
         const coordinateNote = filtered.absoluteBoundingBox && filtered.localPosition
-          ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent, use these for move_node). parentOffset on child nodes is the position relative to the parent's bounding box, for CSS left/top; inside a GROUP it differs from move_node coordinates."
+          ? "absoluteBoundingBox contains global coordinates (relative to canvas). localPosition contains local coordinates (relative to parent; x and y in update_nodes take these). parentOffset on child nodes is the position relative to the parent's bounding box, for CSS left/top; inside a GROUP it differs from x and y."
           : undefined;
 
         const payload = coordinateNote ? { ...filtered, _note: coordinateNote } : filtered;
@@ -581,7 +581,7 @@ export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
     "set_current_page",
     {
-      description: "DEPRECATED — this stateful command is blocked by the relay server. Instead, pass the target page's node ID as parentId on creation commands (e.g., create_rectangle, create_frame). Use get_pages to discover page IDs.",
+      description: "DEPRECATED — this stateful command is blocked by the relay server. Instead, pass the target page's node ID as parentId on creation commands (e.g., create_node_tree). Use get_pages to discover page IDs.",
       inputSchema: {
       pageId: z.string().describe("ID of the page to switch to"),
     },
