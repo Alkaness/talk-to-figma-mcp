@@ -12,9 +12,9 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 |---|---:|---|
 | 2. Document and pages | 17 | `document-tools.ts` |
 | 3. Node trees | 2 | `node-tree-tools.ts` |
-| 4. Creation | 12 | `creation-tools.ts` |
-| 5. Modification | 24 | `modification-tools.ts` |
-| 6. Text | 15 | `text-tools.ts` |
+| 4. Creation | 8 | `creation-tools.ts` |
+| 5. Modification | 14 | `modification-tools.ts` |
+| 6. Text | 5 | `text-tools.ts` |
 | 7. Styles | 3 | `style-tools.ts` |
 | 8. Variables | 4 | `variable-tools.ts` |
 | 9. Components and prototyping | 7 | `component-tools.ts` |
@@ -24,9 +24,9 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 | 13. Verification | 2 | `verify-tools.ts` |
 | 14. FigJam | 6 | `figjam-tools.ts` |
 | 15. REST API (requires a token) | 5 | `rest-tools.ts` |
-| **Total** | **109** | |
+| **Total** | **85** | |
 
-104 tools communicate with the Figma plugin. The 5 REST API tools call the Figma REST API directly and are registered only when a personal access token is configured. The server also provides 5 prompts (section 16) and 2 resources (section 17).
+80 tools communicate with the Figma plugin. The 5 REST API tools call the Figma REST API directly and are registered only when a personal access token is configured. The server also provides 5 prompts (section 16) and 2 resources (section 17).
 
 ## 2. Document and pages (17)
 
@@ -69,9 +69,9 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 8. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
 9. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
 
-10. **Deprecated tools.** The 24 tools below are deprecated because these two tools cover them. They still work, and each description names its replacement; they will be removed in a later release. Removing them shrinks the `tools/list` response from 104 tools and 90,599 characters to 80 tools and 67,035 characters, 26% less (measured without a REST token). `rotate_node`, `set_letter_spacing` and `set_image_filters` are kept: a relative rotation is a change rather than a node property, letter spacing in percent is a second unit beside the pixels that `get_node_info` reports, and image filters can be set without the image hash that `update_nodes` needs.
+10. **Removed tools.** The 24 tools below were deprecated in 1.6.0, because these two tools cover them, and removed in the following release. Their plugin commands remain, so `batch_operations` still runs them in the plugin's own parameter shape. The removal shrank the `tools/list` response from 104 tools and 90,599 characters to 80 tools and 67,081 characters, 26% less (measured without a REST token; with a token, from 109 tools and 94,978 characters to 85 tools and 71,460 characters). `rotate_node`, `set_letter_spacing` and `set_image_filters` are kept: a relative rotation is a change rather than a node property, letter spacing in percent is a second unit beside the pixels that `get_node_info` reports, and image filters can be set without the image hash that `update_nodes` needs.
 
-| Deprecated tool | Replacement |
+| Removed tool | Replacement |
 |---|---|
 | `set_fill_color` | `update_nodes` with `fills: ["#RRGGBB"]` |
 | `set_stroke_color` | `update_nodes` with `strokes`, `strokeWeight` |
@@ -98,16 +98,12 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 | `create_ellipse` | `create_node_tree` |
 | `create_text` | `create_node_tree` |
 
-## 4. Creation (12)
+## 4. Creation (8)
 
 All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `create_rectangle` | Deprecated: use `create_node_tree`. Creates a rectangle. |
-| `create_frame` | Deprecated: use `create_node_tree`. Creates a frame. |
-| `create_text` | Deprecated: use `create_node_tree`. Creates a text node in Inter. Accepts a fixed `width` for wrapping. For other fonts, use `create_node_tree`. |
-| `create_ellipse` | Deprecated: use `create_node_tree`. Creates an ellipse. |
 | `create_polygon` | Creates a polygon. |
 | `create_star` | Creates a star. |
 | `group_nodes` | Groups nodes. |
@@ -117,26 +113,16 @@ All creation tools require `parentId`. See section 18.
 | `flatten_node` | Flattens a node into a single vector. |
 | `boolean_operation` | Applies union, subtract, intersect or exclude to two or more nodes with the same parent. |
 
-## 5. Modification (24)
+## 5. Modification (14)
 
 | Tool | Description |
 |---|---|
-| `set_fill_color` | Deprecated: use `update_nodes`. Sets a solid fill. Alpha defaults to 1; alpha 0 is fully transparent. |
-| `set_stroke_color` | Deprecated: use `update_nodes`. Sets the stroke color. Defaults: opacity 1, weight 1. A weight of 0 is allowed. |
 | `set_selection_colors` | Recolors every fill and stroke in a node and its descendants, like Figma's "Selection colors". |
-| `set_gradient` | Deprecated: use `update_nodes`. Sets a linear, radial, angular or diamond gradient. Replaces existing fills. |
 | `set_image` | Sets an image fill from base64 data (PNG, JPEG, GIF, WebP; about 5 MB maximum after decoding). |
-| `move_node` | Deprecated: use `update_nodes`. Moves a node. Coordinates are local to the parent. |
-| `resize_node` | Deprecated: use `update_nodes`. Resizes a node. |
 | `rotate_node` | Rotates a node counterclockwise by degrees. `relative=true` adds to the current rotation. |
 | `reorder_node` | Changes the layer order of a node within its parent. |
 | `delete_node` | Deletes a node. |
-| `rename_node` | Deprecated: use `update_nodes`. Renames a node. |
-| `set_node_properties` | Deprecated: use `update_nodes`. Sets visibility, lock state and opacity. Omitted properties are unchanged. |
 | `convert_to_frame` | Converts a group or shape into a frame, keeping position, size, styling and children. |
-| `set_corner_radius` | Deprecated: use `update_nodes`. Sets corner radius, per corner if needed. |
-| `set_auto_layout` | Deprecated: use `update_nodes`. Configures auto layout. |
-| `set_effects` | Deprecated: use `update_nodes`. Sets shadows and blurs. |
 | `set_effect_style_id` | Applies an effect style. |
 | `set_grid` | Applies column, row or grid layout grids to a frame. |
 | `get_grid` | Reads the layout grids of a frame. |
@@ -146,21 +132,11 @@ All creation tools require `parentId`. See section 18.
 | `get_annotation` | Reads the annotations on a node. |
 | `batch_operations` | Runs many `{ command, params }` plugin commands in one call and returns a result per operation, with the IDs of the nodes it created. Parameters use the plugin's own shape, which can differ from the tool of the same name. |
 
-## 6. Text (15)
+## 6. Text (5)
 
 | Tool | Description |
 |---|---|
-| `set_text_content` | Deprecated: use `update_nodes`. Replaces the text of a text node. |
-| `set_multiple_text_contents` | Deprecated: use `update_nodes`. Replaces the text of several text nodes in one call. |
-| `set_font_name` | Deprecated: use `update_nodes`. Sets font family and style. |
-| `set_font_size` | Deprecated: use `update_nodes`. Sets font size. |
-| `set_font_weight` | Deprecated: use `update_nodes`. Sets the font weight, resolved to the style name of the node's own family (Inter "Semi Bold", Poppins "SemiBold"). When the family has no style of that weight, the closest one is used and named. Italic is kept. |
 | `set_letter_spacing` | Sets letter spacing. |
-| `set_line_height` | Deprecated: use `update_nodes`. Sets line height. |
-| `set_paragraph_spacing` | Deprecated: use `update_nodes`. Sets paragraph spacing. |
-| `set_text_case` | Deprecated: use `update_nodes`. Sets text case. |
-| `set_text_decoration` | Deprecated: use `update_nodes`. Sets text decoration. |
-| `set_text_align` | Deprecated: use `update_nodes`. Sets horizontal and vertical alignment. Use `RIGHT` for right-to-left text. |
 | `set_text_style_id` | Applies a text style. |
 | `get_styled_text_segments` | Splits a text node into segments in which the given style properties do not change. `properties` takes up to 10 at once; `property` takes one. |
 | `get_fonts_used` | Lists every font family, style and size used in a subtree, with occurrence counts. Defaults to the selection. |

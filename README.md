@@ -88,18 +88,18 @@ The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
 |---|---:|---|
 | Document and pages | 17 | `get_document_info`, `get_node_info`, `get_css`, `get_pages` |
 | Node trees | 2 | `create_node_tree` and `update_nodes`, in the `get_node_info` format |
-| Creation | 12 | `clone_node`, `group_nodes`, `boolean_operation`, `create_polygon` |
-| Modification | 24 | `batch_operations`, `rotate_node`, `reorder_node`, `delete_node` |
-| Text | 15 | `set_letter_spacing`, `get_styled_text_segments`, `get_fonts_used` |
+| Creation | 8 | `clone_node`, `group_nodes`, `boolean_operation`, `create_polygon` |
+| Modification | 14 | `batch_operations`, `rotate_node`, `reorder_node`, `delete_node` |
+| Text | 5 | `set_letter_spacing`, `get_styled_text_segments`, `get_fonts_used` |
 | Styles and variables | 7 | `create_text_style`, `get_variables`, `apply_variable_to_node` |
 | Components and prototyping | 7 | `create_component_instance`, `set_instance_variant`, `set_reactions` |
 | Images, assets and SVG | 12 | `get_visual_snapshot`, `scan_assets`, `get_asset`, `extract_asset`, `get_svg` |
 | Verification | 2 | `compare_to_figma` (SSIM score and diff heatmap), `capture_render` |
 | FigJam | 6 | `create_sticky`, `create_connector`, `create_section` |
 | REST API | 5 | `rest_get_file`, `rest_render_image`, `rest_get_comments` |
-| **Total** | **109** | |
+| **Total** | **85** | |
 
-24 of these tools are deprecated because `create_node_tree` and `update_nodes` cover them: the single-property setters for fills, strokes, gradients, effects, auto-layout, position, size, name, visibility, lock state, opacity, corner radius, font weight and text style, the text content setters, and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. They still work, and each description names its replacement. See [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2).
+The release after 1.6.0 removed 24 tools that `create_node_tree` and `update_nodes` cover: the single-property setters for fills, strokes, gradients, effects, auto-layout, position, size, name, visibility, lock state, opacity, corner radius, font weight and text style, the text content setters, and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2) maps each to its replacement.
 
 The 5 REST API tools require a Figma personal access token ([INSTALLATION.md, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They read and render any file the token's owner can open, without the plugin.
 

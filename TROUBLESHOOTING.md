@@ -116,7 +116,7 @@ The same cause also produces "Figma plugin disconnected before the command could
 
 ### 3.6 "Figma lists no fonts at all"
 
-**Cause:** `figma.listAvailableFontsAsync()` returned no fonts, so the Figma client cannot load any font and no plugin can create or edit text. On 2026-09-24 this was seen with figma-linux (snap, build 197): the plugin received 0 families, and `loadFontAsync` failed even for Inter Regular. `create_text` fails in the same session with `The font "Inter Regular" could not be loaded`.
+**Cause:** `figma.listAvailableFontsAsync()` returned no fonts, so the Figma client cannot load any font and no plugin can create or edit text. On 2026-09-24 this was seen with figma-linux (snap, build 197): the plugin received 0 families, and `loadFontAsync` failed even for Inter Regular. The plugin's `create_text` command fails in the same session with `The font "Inter Regular" could not be loaded`.
 
 **Resolution:**
 

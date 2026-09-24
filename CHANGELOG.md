@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed
+- **The 24 tools that were deprecated in 1.6.0**, because `create_node_tree` and `update_nodes` cover them: `set_fill_color`, `set_stroke_color`, `set_gradient`, `set_effects`, `set_auto_layout`, `move_node`, `resize_node`, `rename_node`, `set_node_properties`, `set_corner_radius`, `set_font_name`, `set_font_weight`, `set_font_size`, `set_line_height`, `set_paragraph_spacing`, `set_text_align`, `set_text_case`, `set_text_decoration`, `set_text_content`, `set_multiple_text_contents`, `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2) maps each to its replacement. The server now registers 85 tools. The `tools/list` response shrank from 104 tools and 90,599 characters to 80 tools and 67,081 characters, 26% less (measured without a REST token; with a token, from 109 tools and 94,978 characters to 85 tools and 71,460 characters).
+- The plugin commands of these tools remain: `batch_operations` still runs them, and a 1.6.0 server still works with the current plugin. The plugin did not change, so it does not need to be run again.
+
 ## [1.6.0] - 2026-09-24
 
 The plugin changed in this release. Close it in Figma and run it again from **Menu > Plugins > Development**; Figma then loads the new `code.js`.
