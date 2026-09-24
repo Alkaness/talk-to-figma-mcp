@@ -11,6 +11,7 @@ import { registerFigJamTools } from "./figjam-tools";
 import { registerStyleTools } from "./style-tools";
 import { registerVerifyTools } from "./verify-tools";
 import { registerAssetTools } from "./asset-tools";
+import { registerNodeTreeTools } from "./node-tree-tools";
 import { registerRestTools } from "./rest-tools";
 
 /**
@@ -20,6 +21,7 @@ import { registerRestTools } from "./rest-tools";
 export function registerTools(server: McpServer): void {
   // Register all tool categories
   registerDocumentTools(server);
+  registerNodeTreeTools(server);
   registerCreationTools(server);
   registerModificationTools(server);
   registerTextTools(server);
@@ -49,5 +51,6 @@ export {
   registerStyleTools,
   registerVerifyTools,
   registerAssetTools,
+  registerNodeTreeTools,
   registerRestTools,
 };

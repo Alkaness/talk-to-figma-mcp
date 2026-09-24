@@ -283,7 +283,7 @@ Roo Code also reads a per-project `.roo/mcp.json` with the same structure.
 
 ## 5. Optional: Figma personal access token
 
-The plugin tools operate on the file that is open in Figma. A personal access token additionally enables the 5 REST API tools ([Commands, section 14](COMMANDS.md#14-rest-api-5)), which read and render any file the token's owner can open, without the plugin. The REST API cannot modify document content; all edits go through the plugin.
+The plugin tools operate on the file that is open in Figma. A personal access token additionally enables the 5 REST API tools ([Commands, section 15](COMMANDS.md#15-rest-api-5)), which read and render any file the token's owner can open, without the plugin. The REST API cannot modify document content; all edits go through the plugin.
 
 ### 5.1 Create the token
 

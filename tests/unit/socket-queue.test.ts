@@ -105,6 +105,7 @@ describe("Command Validation (unit)", () => {
     expect(CREATION_COMMANDS.has("set_svg")).toBe(true);
     expect(CREATION_COMMANDS.has("clone_node")).toBe(true);
     expect(CREATION_COMMANDS.has("create_component_from_node")).toBe(true);
+    expect(CREATION_COMMANDS.has("create_node_tree")).toBe(true);
     // FigJam creation commands
     expect(CREATION_COMMANDS.has("create_section")).toBe(true);
     expect(CREATION_COMMANDS.has("create_sticky")).toBe(true);
@@ -117,6 +118,8 @@ describe("Command Validation (unit)", () => {
     expect(CREATION_COMMANDS.has("move_node")).toBe(false);
     expect(CREATION_COMMANDS.has("resize_node")).toBe(false);
     expect(CREATION_COMMANDS.has("get_node_info")).toBe(false);
+    expect(CREATION_COMMANDS.has("update_nodes")).toBe(false);
+    expect(CREATION_COMMANDS.has("get_available_fonts")).toBe(false);
   });
 
   it("BLOCKED_COMMANDS includes set_current_page", () => {

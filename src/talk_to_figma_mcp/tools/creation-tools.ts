@@ -20,10 +20,7 @@ export function registerCreationTools(server: McpServer): void {
       width: z.coerce.number().describe("Width of the rectangle"),
       height: z.coerce.number().describe("Height of the rectangle"),
       name: z.string().optional().describe("Optional name for the rectangle"),
-      parentId: z
-        .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: coerceJson(z.object({
           r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
           g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
@@ -89,10 +86,7 @@ export function registerCreationTools(server: McpServer): void {
       width: z.coerce.number().describe("Width of the frame"),
       height: z.coerce.number().describe("Height of the frame"),
       name: z.string().optional().describe("Optional name for the frame"),
-      parentId: z
-        .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       fillColor: coerceJson(z.object({
           r: z.coerce.number().min(0).max(1).describe("Red component (0-1)"),
           g: z.coerce.number().min(0).max(1).describe("Green component (0-1)"),
@@ -184,10 +178,7 @@ export function registerCreationTools(server: McpServer): void {
         .string()
         .optional()
         .describe("Optional name for the text node by default following text"),
-      parentId: z
-        .string()
-        .optional()
-        .describe("Parent node ID. REQUIRED — server enforces this. Use page node ID for top-level elements. Get page IDs via get_pages tool."),
+      parentId: z.string().describe("Parent node ID (required). Use page node ID for top-level elements. Get page IDs via get_pages tool."),
       textAlignHorizontal: z
         .enum(["LEFT", "CENTER", "RIGHT", "JUSTIFIED"])
         .optional()

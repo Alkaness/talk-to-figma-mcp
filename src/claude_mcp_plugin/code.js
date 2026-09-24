@@ -373,6 +373,12 @@ async function handleCommand(command, params) {
       return await createPaintStyle(params);
     case "create_effect_style":
       return await createEffectStyle(params);
+    case "create_node_tree":
+      return await createNodeTree(params);
+    case "update_nodes":
+      return await updateNodes(params);
+    case "get_available_fonts":
+      return await getAvailableFonts(params);
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -436,6 +442,21 @@ function pruneNodeDocToDepth(doc, depth, currentDepth = 0) {
   return doc;
 }
 
+// The REST format does not document the unit of `rotation`. Replace it with
+// the Plugin API value, in degrees, which rotate_node and create_node_tree
+// take. Children are matched by id, down to the depth that is returned.
+function annotateRotation(doc, node, depth) {
+  if (!doc || !node) return;
+  if ("rotation" in node) {
+    if (node.rotation) doc.rotation = node.rotation;
+    else delete doc.rotation;
+  }
+  if (depth <= 0 || !Array.isArray(doc.children) || !("children" in node)) return;
+  const byId = new Map();
+  for (const child of node.children) byId.set(child.id, child);
+  for (const childDoc of doc.children) annotateRotation(childDoc, byId.get(childDoc.id), depth - 1);
+}
+
 async function getNodeInfo(nodeId, depth) {
   const node = await getNodeByIdSafe(nodeId);
 
@@ -455,8 +476,11 @@ async function getNodeInfo(nodeId, depth) {
     };
   }
 
+  const limited = typeof depth === "number" && depth >= 0;
+  annotateRotation(response.document, node, limited ? depth : Infinity);
+
   // Depth pushdown: older servers omit depth (undefined) and get the full tree.
-  if (typeof depth === "number" && depth >= 0) {
+  if (limited) {
     pruneNodeDocToDepth(response.document, depth);
   }
 
@@ -492,7 +516,9 @@ async function getNodesInfo(nodeIds, depth) {
               y: node.y
             };
           }
-          if (typeof depth === "number" && depth >= 0) {
+          const limited = typeof depth === "number" && depth >= 0;
+          annotateRotation(doc, node, limited ? depth : Infinity);
+          if (limited) {
             pruneNodeDocToDepth(doc, depth);
           }
           return {
@@ -695,20 +721,21 @@ async function createText(params) {
     }
   };
 
+  // Load the font before creating the node: a failure then reports an error
+  // instead of leaving a default-styled text node behind.
+  const fontName = { family: "Inter", style: getFontStyle(fontWeight) };
+  try {
+    await figma.loadFontAsync(fontName);
+  } catch (error) {
+    throw new Error(`Could not load font ${fontName.family} ${fontName.style}: ${error && error.message ? error.message : error}`);
+  }
+
   const textNode = figma.createText();
   textNode.x = x;
   textNode.y = y;
   textNode.name = name;
-  try {
-    await figma.loadFontAsync({
-      family: "Inter",
-      style: getFontStyle(fontWeight),
-    });
-    textNode.fontName = { family: "Inter", style: getFontStyle(fontWeight) };
-    textNode.fontSize = parseFloat(fontSize);
-  } catch (error) {
-    console.error("Error setting font size", error);
-  }
+  textNode.fontName = fontName;
+  textNode.fontSize = parseFloat(fontSize);
   await setCharacters(textNode, text);
 
   // Set text color
@@ -1435,8 +1462,11 @@ async function batchOperations(params) {
     }
 
     try {
-      await handleCommand(cmd, opParams);
-      results.push({ index: i, command: cmd, ok: true });
+      const value = await handleCommand(cmd, opParams);
+      const entry = { index: i, command: cmd, ok: true };
+      // Creation commands return the new node, whose ID later operations need.
+      if (value && typeof value === "object" && typeof value.id === "string") entry.id = value.id;
+      results.push(entry);
       succeeded++;
     } catch (error) {
       results.push({ index: i, command: cmd, ok: false, error: error && error.message ? error.message : String(error) });
@@ -6835,3 +6865,407 @@ async function createEffectStyle(params) {
   };
 }
 
+
+// ─── Node trees: create_node_tree, update_nodes, get_available_fonts ───────
+// The MCP server validates the agent's spec and translates it to Plugin API
+// property names (utils/node-spec.ts). The functions below apply it in the
+// order the Plugin API requires. A property that cannot be set becomes a
+// warning in the result; nothing is skipped silently.
+
+// Property names each group of a spec may set. The server sends only these;
+// the lists also stop a hand-written payload from setting other properties.
+const NODE_SPEC_PROPS = {
+  props: new Set([
+    "fills", "strokes", "strokeWeight", "strokeAlign", "dashPattern",
+    "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight",
+    "cornerRadius", "topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius",
+    "cornerSmoothing", "effects", "opacity", "blendMode", "isMask", "clipsContent", "visible",
+  ]),
+  layout: new Set([
+    "layoutMode", "layoutWrap", "itemSpacing", "counterAxisSpacing",
+    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+    "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent",
+    "primaryAxisSizingMode", "counterAxisSizingMode", "itemReverseZIndex", "strokesIncludedInLayout",
+  ]),
+  childProps: new Set([
+    "layoutPositioning", "layoutSizingHorizontal", "layoutSizingVertical", "layoutGrow", "layoutAlign",
+    "minWidth", "maxWidth", "minHeight", "maxHeight",
+  ]),
+  text: new Set([
+    "fontSize", "lineHeight", "letterSpacing", "textCase", "textDecoration", "textAlignHorizontal",
+    "textAlignVertical", "paragraphSpacing", "paragraphIndent", "textTruncation", "maxLines", "hyperlink",
+  ]),
+};
+
+// Setters for the properties a run of characters can override.
+const TEXT_RANGE_SETTERS = {
+  fontSize: "setRangeFontSize",
+  lineHeight: "setRangeLineHeight",
+  letterSpacing: "setRangeLetterSpacing",
+  textCase: "setRangeTextCase",
+  textDecoration: "setRangeTextDecoration",
+  hyperlink: "setRangeHyperlink",
+  fills: "setRangeFills",
+};
+
+const NODE_SPEC_FACTORIES = {
+  FRAME: () => figma.createFrame(),
+  COMPONENT: () => figma.createComponent(),
+  RECTANGLE: () => figma.createRectangle(),
+  ELLIPSE: () => figma.createEllipse(),
+  LINE: () => figma.createLine(),
+  TEXT: () => figma.createText(),
+};
+
+let availableFontIndex = null; // lower-cased family -> { family, styles }
+
+async function loadAvailableFontIndex(refresh) {
+  if (availableFontIndex && !refresh) return availableFontIndex;
+  const fonts = await figma.listAvailableFontsAsync();
+  const index = new Map();
+  for (const font of fonts) {
+    const key = font.fontName.family.toLowerCase();
+    let entry = index.get(key);
+    if (!entry) {
+      entry = { family: font.fontName.family, styles: [] };
+      index.set(key, entry);
+    }
+    if (entry.styles.indexOf(font.fontName.style) === -1) entry.styles.push(font.fontName.style);
+  }
+  availableFontIndex = index;
+  return index;
+}
+
+// The styles of each family, matched case-insensitively; null for a family Figma does not have.
+async function getAvailableFonts(params) {
+  const families = params && Array.isArray(params.families) ? params.families : [];
+  let index = await loadAvailableFontIndex(false);
+  // Fonts installed while the plugin runs are not in the cache yet.
+  if (families.some((family) => !index.has(String(family).toLowerCase()))) {
+    index = await loadAvailableFontIndex(true);
+  }
+  const fonts = {};
+  for (const family of families) {
+    const entry = index.get(String(family).toLowerCase());
+    fonts[family] = entry ? { family: entry.family, styles: entry.styles.slice() } : null;
+  }
+  return { fonts };
+}
+
+async function loadFonts(fonts) {
+  const failed = [];
+  await Promise.all((fonts || []).map((font) =>
+    figma.loadFontAsync(font).catch(() => { failed.push(`${font.family} ${font.style}`); })
+  ));
+  if (failed.length > 0) throw new Error(`Could not load font(s): ${failed.join(", ")}`);
+}
+
+// Text can be edited only when every font it uses is loaded.
+async function loadNodeFonts(node) {
+  const fonts = node.characters.length > 0
+    ? node.getRangeAllFontNames(0, node.characters.length)
+    : [node.fontName];
+  await Promise.all(fonts.map((font) => figma.loadFontAsync(font)));
+}
+
+function errorText(error) {
+  return error && error.message ? error.message : String(error);
+}
+
+function resolvePaints(paints, ctx, label) {
+  return paints.filter((paint) => {
+    if (paint.type !== "IMAGE" || figma.getImageByHash(paint.imageHash)) return true;
+    ctx.warnings.push(`${label}: image ${paint.imageHash} is not in this file; the image fill was skipped`);
+    return false;
+  });
+}
+
+function setNodeProp(node, key, value, ctx, label) {
+  if (!(key in node)) {
+    ctx.warnings.push(`${label}: a ${node.type} node has no ${key}; skipped`);
+    return false;
+  }
+  try {
+    node[key] = key === "fills" || key === "strokes" ? resolvePaints(value, ctx, label) : value;
+    return true;
+  } catch (error) {
+    ctx.warnings.push(`${label}: ${key} not set: ${errorText(error)}`);
+    return false;
+  }
+}
+
+function setNodeProps(node, props, allowed, ctx, label) {
+  if (!props) return;
+  for (const key of Object.keys(props)) {
+    if (!allowed.has(key)) {
+      ctx.warnings.push(`${label}: ${key} cannot be set here; skipped`);
+      continue;
+    }
+    setNodeProp(node, key, props[key], ctx, label);
+  }
+}
+
+function applyTextSpec(node, text, ctx, label) {
+  if (text.fontName) node.fontName = text.fontName;
+  if (text.characters !== undefined) node.characters = text.characters;
+  setNodeProps(node, text.props, NODE_SPEC_PROPS.text, ctx, label);
+  const length = node.characters.length;
+  for (const range of text.ranges || []) {
+    const where = `characters ${range.start}-${range.end}`;
+    if (range.end > length) {
+      ctx.warnings.push(`${label}: ${where} are past the end of the text (length ${length}); skipped`);
+      continue;
+    }
+    if (range.fontName) {
+      try {
+        node.setRangeFontName(range.start, range.end, range.fontName);
+      } catch (error) {
+        ctx.warnings.push(`${label}: font of ${where} not set: ${errorText(error)}`);
+      }
+    }
+    for (const key of Object.keys(range.props || {})) {
+      const setter = TEXT_RANGE_SETTERS[key];
+      if (!setter) {
+        ctx.warnings.push(`${label}: ${key} cannot be set on a range of characters; skipped`);
+        continue;
+      }
+      try {
+        const value = key === "fills" ? resolvePaints(range.props[key], ctx, label) : range.props[key];
+        node[setter](range.start, range.end, value);
+      } catch (error) {
+        ctx.warnings.push(`${label}: ${key} of ${where} not set: ${errorText(error)}`);
+      }
+    }
+  }
+}
+
+function applySpecSize(node, size, ctx, label) {
+  if (!size) return;
+  if (!("resize" in node)) {
+    ctx.warnings.push(`${label}: a ${node.type} node cannot be resized; size skipped`);
+    return;
+  }
+  const width = Math.max(size.width !== undefined ? size.width : node.width, 0.01);
+  const height = Math.max(size.height !== undefined ? size.height : node.height, 0.01);
+  try {
+    // A line's length is its width; its height must stay 0.
+    node.resize(width, node.type === "LINE" ? 0 : height);
+  } catch (error) {
+    ctx.warnings.push(`${label}: size not set: ${errorText(error)}`);
+  }
+}
+
+function hasAutoLayout(node) {
+  return !!node && "layoutMode" in node && node.layoutMode !== "NONE";
+}
+
+// Returns true when x and y were applied.
+function applySpecPosition(node, position, ctx, label) {
+  if (!position) return false;
+  if (hasAutoLayout(node.parent) && node.layoutPositioning !== "ABSOLUTE") {
+    if (position.explicit) {
+      ctx.warnings.push(`${label}: x and y ignored; the parent uses auto-layout. Set layoutPositioning to ABSOLUTE to place the node freely`);
+    }
+    return false;
+  }
+  if (position.x !== undefined) node.x = position.x;
+  if (position.y !== undefined) node.y = position.y;
+  return true;
+}
+
+function applySpecRotation(node, spec, positioned, ctx, label) {
+  if (!setNodeProp(node, "rotation", spec.rotation, ctx, label)) return;
+  const position = spec.position;
+  if (!positioned || !position || !position.byBox || !node.rotation) return;
+  if (position.x === undefined || position.y === undefined) return;
+  // parentOffset is where the rotated bounding box starts: move the node so its box lands there.
+  const parent = node.parent;
+  const box = node.absoluteBoundingBox;
+  const parentBox = parent.type === "PAGE" ? { x: 0, y: 0 } : parent.absoluteBoundingBox;
+  if (!box || !parentBox) return;
+  node.x += parentBox.x + position.x - box.x;
+  node.y += parentBox.y + position.y - box.y;
+}
+
+function insertIntoParent(parent, node, index) {
+  if (typeof index === "number" && index >= 0 && index < parent.children.length) parent.insertChild(index, node);
+  else parent.appendChild(node);
+}
+
+// Apply everything but creation and children, in the order the Plugin API
+// requires. `placement` inserts a new node between the properties that need
+// no parent and those that do (FILL and ABSOLUTE need an auto-layout parent).
+async function applyNodeSpec(node, spec, placement, ctx) {
+  const label = spec.label;
+  if (ctx.mode === "update" && node.type === "TEXT") await loadNodeFonts(node);
+  if (spec.name !== undefined) node.name = spec.name;
+  if (spec.text) {
+    if (node.type === "TEXT") applyTextSpec(node, spec.text, ctx, label);
+    else ctx.warnings.push(`${label}: characters, style and textRuns apply only to TEXT nodes; skipped`);
+  }
+  applySpecSize(node, spec.size, ctx, label);
+  if (spec.text && spec.text.autoResize && node.type === "TEXT") {
+    setNodeProp(node, "textAutoResize", spec.text.autoResize, ctx, label);
+  }
+  setNodeProps(node, spec.props, NODE_SPEC_PROPS.props, ctx, label);
+  setNodeProps(node, spec.layout, NODE_SPEC_PROPS.layout, ctx, label);
+  if (placement) insertIntoParent(placement.parent, node, placement.index);
+  setNodeProps(node, spec.childProps, NODE_SPEC_PROPS.childProps, ctx, label);
+  const positioned = applySpecPosition(node, spec.position, ctx, label);
+  if (spec.constraints) setNodeProp(node, "constraints", spec.constraints, ctx, label);
+  if (spec.rotation !== undefined) applySpecRotation(node, spec, positioned, ctx, label);
+}
+
+async function instantiateSpec(spec, ctx) {
+  const create = spec.create;
+  if (create.kind === "new") {
+    const factory = NODE_SPEC_FACTORIES[create.type];
+    if (!factory) throw new Error(`${create.type} nodes cannot be created`);
+    return factory();
+  }
+  if (create.kind === "svg") return figma.createNodeFromSvg(sanitizeSvg(create.svg));
+  if (create.kind === "clone" || create.kind === "instance") {
+    // A clone of the source keeps everything, including instance overrides.
+    const source = create.sourceId ? await getNodeByIdSafe(create.sourceId) : null;
+    if (source && (create.kind === "clone" || source.type === "INSTANCE")) return source.clone();
+    if (create.kind === "instance" && create.componentId) {
+      const component = await getNodeByIdSafe(create.componentId);
+      if (component && component.type === "COMPONENT") {
+        if (create.hasChildren) {
+          ctx.warnings.push(`${spec.label}: created from its main component; overrides inside the original instance were not copied`);
+        }
+        return component.createInstance();
+      }
+    }
+    const what = create.kind === "instance" ? "its main component" : `the ${create.type} node ${create.sourceId}`;
+    ctx.warnings.push(`${spec.label}: skipped; ${what} is not in this file. Pass svg with its markup (get_svg returns it) to rebuild it`);
+    return null;
+  }
+  throw new Error(`unknown creation step "${create.kind}"`);
+}
+
+function pageOf(node) {
+  let current = node;
+  while (current && current.type !== "PAGE") current = current.parent;
+  return current || figma.currentPage;
+}
+
+// A group has no coordinate space of its own: build its children in a scratch
+// frame at their offsets from the group's box, group them there, then move
+// the group into place.
+async function buildGroup(spec, placement, ctx) {
+  const scratch = figma.createFrame();
+  scratch.name = "create_node_tree scratch";
+  scratch.fills = [];
+  scratch.clipsContent = false;
+  pageOf(placement.parent).appendChild(scratch);
+  try {
+    const built = [];
+    for (const child of spec.children || []) {
+      const node = await buildSpecNode(child, { parent: scratch }, ctx);
+      if (node) built.push(node);
+    }
+    if (built.length === 0) {
+      ctx.warnings.push(`${spec.label}: skipped; none of its children could be built`);
+      return null;
+    }
+    const group = figma.group(built, scratch);
+    insertIntoParent(placement.parent, group, placement.index);
+    return group;
+  } finally {
+    if (!scratch.removed) scratch.remove();
+  }
+}
+
+async function buildSpecNode(spec, placement, ctx) {
+  let node = null;
+  try {
+    const isGroup = spec.create.kind === "group";
+    node = isGroup ? await buildGroup(spec, placement, ctx) : await instantiateSpec(spec, ctx);
+    if (!node) return null;
+    ctx.ids[spec.key] = node.id;
+    ctx.created += 1;
+    // buildGroup has already placed the group.
+    await applyNodeSpec(node, spec, isGroup ? null : placement, ctx);
+    if (spec.create.kind === "new" && spec.children) {
+      for (const child of spec.children) await buildSpecNode(child, { parent: node }, ctx);
+    }
+    if (ctx.created % 25 === 0) {
+      sendProgressUpdate(
+        ctx.commandId, "create_node_tree", "in_progress",
+        Math.min(99, Math.round((ctx.created / ctx.total) * 100)), ctx.total, ctx.created,
+        `Built ${ctx.created} of ${ctx.total} nodes`
+      );
+    }
+    return node;
+  } catch (error) {
+    // Remove what this call built: a failed build leaves nothing on the canvas.
+    if (node && !node.removed) node.remove();
+    if (error && error.specLabel) throw error;
+    const labeled = new Error(`at ${spec.label}: ${errorText(error)}`);
+    labeled.specLabel = spec.label;
+    throw labeled;
+  }
+}
+
+function countSpecNodes(spec) {
+  let count = 1;
+  for (const child of spec.children || []) count += countSpecNodes(child);
+  return count;
+}
+
+async function createNodeTree(params) {
+  const { parentId, tree, fonts, index } = params || {};
+  // The incoming commandId is the MCP request id: progress updates keep it alive.
+  const commandId = (params && params.commandId) || generateCommandId();
+  if (!parentId) throw new Error("Missing parentId parameter");
+  if (!tree || !tree.create) {
+    throw new Error("create_node_tree takes the tree as normalized by the MCP server; use the create_node_tree tool");
+  }
+  const parent = await getNodeByIdSafe(parentId);
+  if (!parent) throw new Error(`Parent node not found with ID: ${parentId}`);
+  if (!("appendChild" in parent)) throw new Error(`Parent node does not support children: ${parentId}`);
+  if (parent.type === "PAGE") await parent.loadAsync();
+
+  // Load every font first, so a missing font fails the call before anything is created.
+  await loadFonts(fonts);
+
+  const ctx = { mode: "create", ids: {}, warnings: [], created: 0, total: countSpecNodes(tree), commandId };
+  sendProgressUpdate(commandId, "create_node_tree", "started", 0, ctx.total, 0, `Building ${ctx.total} nodes…`);
+  const root = await buildSpecNode(tree, { parent, index }, ctx);
+  sendProgressUpdate(commandId, "create_node_tree", "completed", 100, ctx.total, ctx.created, `Built ${ctx.created} nodes`);
+  return { rootId: root ? root.id : null, ids: ctx.ids, created: ctx.created, warnings: ctx.warnings };
+}
+
+async function updateNodes(params) {
+  const { updates, fonts } = params || {};
+  const commandId = (params && params.commandId) || generateCommandId();
+  if (!Array.isArray(updates) || updates.length === 0) throw new Error("update_nodes requires a non-empty updates array");
+  if (updates.some((update) => !update || !update.nodeId || !update.spec)) {
+    throw new Error("update_nodes takes the updates as normalized by the MCP server; use the update_nodes tool");
+  }
+  await loadFonts(fonts);
+
+  const total = updates.length;
+  const results = [];
+  const warnings = [];
+  let succeeded = 0;
+  sendProgressUpdate(commandId, "update_nodes", "started", 0, total, 0, `Updating ${total} nodes…`);
+  for (let i = 0; i < total; i++) {
+    const update = updates[i];
+    try {
+      const node = await getNodeByIdSafe(update.nodeId);
+      if (!node) throw new Error(`Node not found with ID: ${update.nodeId}`);
+      await applyNodeSpec(node, update.spec, null, { mode: "update", warnings });
+      results.push({ nodeId: update.nodeId, ok: true });
+      succeeded++;
+    } catch (error) {
+      results.push({ nodeId: update.nodeId, ok: false, error: errorText(error) });
+    }
+    if ((i + 1) % 25 === 0 && i + 1 < total) {
+      sendProgressUpdate(commandId, "update_nodes", "in_progress", Math.round(((i + 1) / total) * 100), total, i + 1, `Updated ${i + 1} of ${total} nodes`);
+    }
+  }
+  sendProgressUpdate(commandId, "update_nodes", "completed", 100, total, total, `Updated ${succeeded} of ${total} nodes`);
+  return { total, succeeded, failed: total - succeeded, results, warnings };
+}

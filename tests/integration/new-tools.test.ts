@@ -211,6 +211,24 @@ describe('batch_operations', () => {
     expect(text).toContain('[#2] rename_node: Node not found');
   });
 
+  it('lists the IDs of nodes the operations created, not of nodes they edited', async () => {
+    mockSend.mockResolvedValueOnce({
+      total: 2, succeeded: 2, failed: 0,
+      results: [
+        { index: 0, command: 'create_frame', ok: true, id: '5:1' },
+        { index: 1, command: 'rename_node', ok: true, id: '2:2' },
+      ],
+    });
+    const ops = [
+      { command: 'create_frame', params: { parentId: '0:1', width: 10, height: 10 } },
+      { command: 'rename_node', params: { nodeId: '2:2', name: 'x' } },
+    ];
+    const text = firstText(await call('batch_operations', { operations: ops }));
+
+    expect(text).toContain('Created nodes:\n  [#0] create_frame: 5:1');
+    expect(text).not.toContain('2:2');
+  });
+
   it('accepts operations passed as a JSON string (coerceJson)', async () => {
     mockSend.mockResolvedValueOnce({ total: 1, succeeded: 1, failed: 0, results: [{ index: 0, command: 'move_node', ok: true }] });
     const ops = [{ command: 'move_node', params: { nodeId: '1', x: 5, y: 5 } }];

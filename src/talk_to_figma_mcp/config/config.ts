@@ -45,4 +45,6 @@ CONNECTION IS ZERO-CONFIG. As long as the user has the plugin open and connected
 
 If a tool returns an error indicating no plugin is connected, tell the user: "Open the Talk to Figma plugin in your Figma file and click Connect," then retry.
 
-Only call join_channel when a tool reports that MULTIPLE Figma files are connected and you need to disambiguate which file to target.`;
+Only call join_channel when a tool reports that MULTIPLE Figma files are connected and you need to disambiguate which file to target.
+
+TO BUILD OR CHANGE DESIGNS, prefer create_node_tree, which builds a whole subtree in one call, and update_nodes, which changes many properties of many nodes in one call. Both take the format that get_node_info returns: auto-layout with FILL and HUG sizing, fonts by family and weight, hex colors and text runs. Read the warnings in their results, then check the design once with get_visual_snapshot.`;

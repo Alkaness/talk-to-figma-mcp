@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > Development > Import plugin from manifest**, then select `src/claude_mcp_plugin/manifest.json`.
+
+### Added
+- **`create_node_tree` and `update_nodes` write in the format that `get_node_info` reads.** An agent that had read a design could not write it back. No tool set FILL or HUG sizing, absolute positioning, constraints, stroke alignment or mixed-style text. `create_text` used only Inter. Colors were read as hex but written as 0-1 floats in three different shapes. Rebuilding one card took about 22 sequential calls, and the result was still wrong.
+  1. `create_node_tree` builds a node and its whole subtree in one call and returns the ID of every node it created. A `get_node_info` result, edited or not, is a valid input.
+  2. `update_nodes` changes the given properties of several existing nodes in one call.
+  3. Both accept hex colors and resolve `fontWeight` to each family's own style name (Inter "Semi Bold", Poppins "SemiBold").
+  4. Both validate the whole spec before changing anything and name the path of each error.
+  5. Both report every property that was not applied as a warning. A failed build removes what it created.
+
 ### Fixed
 - **`get_node_info`, `get_nodes_info` and `rest_get_file` no longer discard layout and styling.** The node filter kept 10 properties and dropped the rest. Agents therefore had to infer auto-layout from coordinates, rendered hidden layers, merged mixed-style text into one style, and lost stroke weights, per-corner radii, effects, opacity and clipping. The tree now includes:
   1. Auto-layout and child sizing: `layoutMode`, padding, `itemSpacing`, alignment, sizing modes, `layoutSizingHorizontal`/`layoutSizingVertical`, `layoutPositioning` and constraints.
@@ -22,9 +32,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   Values equal to Figma's defaults are omitted, and lengths are rounded to 2 decimals. The change is in the MCP server only; the plugin does not need to be re-imported.
 - **`get_node_info` on a vector node** returned an error, because vector nodes were removed from the tree. They are now returned like other nodes.
+- **`create_text` reported success when its font failed to load**, and left an Inter Regular node at the default size. It now returns the error and creates nothing.
+- **`create_rectangle`, `create_frame` and `create_text` declared `parentId` optional**, although the relay rejects creation without it. The schemas now require it.
 
 ### Changed
 - The `export-to-tailwind` and `read_design_strategy` prompts and the `get_node_info`, `get_nodes_info`, `get_css` and `rest_get_file` descriptions now describe the fields above.
+- `get_node_info` and `get_nodes_info` report `rotation` in degrees, taken from the Plugin API, because the REST format does not document the unit of its value. This needs the updated plugin.
+- `batch_operations` returns the ID of each node its operations created. Its description states that its params use the plugin's own shape.
+- The `design_strategy` prompt now teaches auto-layout with FILL and HUG sizing, one `create_node_tree` call, and one visual check at the end. It no longer teaches x/y placement with a `get_node_info` call after every creation. The server instructions point to the new tools.
 
 ## [1.5.0] - 2026-09-23
 

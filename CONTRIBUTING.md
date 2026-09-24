@@ -35,11 +35,12 @@ src/
   talk_to_figma_mcp/         MCP server
     server.ts                Entry point
     config/config.ts         CLI arguments and server metadata (version)
-    tools/                   13 *-tools.ts files, 107 tools; index.ts registers them
+    tools/                   14 *-tools.ts files, 109 tools; index.ts registers them
     prompts/index.ts         5 MCP prompts
     resources/index.ts       2 MCP resources
-    utils/                   WebSocket client, logger, result schemas, image comparison,
-                             headless capture, REST client, CSS and asset helpers
+    utils/                   WebSocket client, logger, result schemas, node reader and
+                             writer formats, image comparison, headless capture,
+                             REST client, CSS and asset helpers
     types/                   Shared TypeScript types
   claude_mcp_plugin/         Figma plugin
     manifest.json            Plugin manifest (import this in Figma)
@@ -66,6 +67,7 @@ These rules protect against earlier bugs. Each one is also commented where it li
 6. **Plugin results** are validated with `parseCommandResult()` and a schema in `utils/command-results.ts` only when the result feeds logic. Display-only results stay unvalidated on purpose; add a schema when that changes.
 7. **`parentId` is required** in every creation tool schema. The relay enforces it as well.
 8. **Logging** goes through `logger` in `utils/logger.ts`, which writes to stderr because stdout carries the MCP protocol. Debug output requires `LOG_LEVEL=debug`. Never log whole payloads (snapshots can be several MB of base64); use `truncateForLog()`.
+9. **One node format for reading and writing.** `filterFigmaNode` (`utils/figma-helpers.ts`) defines what `get_node_info` returns, and `create_node_tree` and `update_nodes` accept the same fields (`utils/node-spec.ts`). A field added to the reader's lists must be accepted by the writer; `tests/unit/utils/node-spec.test.ts` checks this and that `get_node_info` output parses unchanged. The server translates specs to Plugin API names; `applyNodeSpec` in `code.js` only applies them, and reports a property it cannot set as a warning.
 
 ## 4. Development setup
 

@@ -173,6 +173,31 @@ export const COMMAND_RESULT_SCHEMAS = {
       nodes: z.array(cssBlock),
     }),
   ]),
+
+  get_available_fonts: z
+    .object({
+      fonts: z.record(z.object({ family: z.string(), styles: z.array(z.string()) }).nullable()),
+    })
+    .passthrough(),
+
+  create_node_tree: z
+    .object({
+      rootId: z.string().nullable(),
+      ids: z.record(z.string()),
+      created: z.number(),
+      warnings: z.array(z.string()),
+    })
+    .passthrough(),
+
+  update_nodes: z
+    .object({
+      total: z.number(),
+      succeeded: z.number(),
+      failed: z.number(),
+      results: z.array(z.object({ nodeId: z.string(), ok: z.boolean(), error: z.string().optional() }).passthrough()),
+      warnings: z.array(z.string()),
+    })
+    .passthrough(),
 } as const;
 
 export type ValidatedCommand = keyof typeof COMMAND_RESULT_SCHEMAS;

@@ -6,6 +6,78 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 /**
+ * The example tree in the design_strategy prompt. Exported so a test can check
+ * that it is a valid create_node_tree spec.
+ */
+export const DESIGN_STRATEGY_EXAMPLE = {
+  type: "FRAME",
+  name: "Login card",
+  width: 400,
+  layoutMode: "VERTICAL",
+  itemSpacing: 16,
+  paddingTop: 32,
+  paddingRight: 32,
+  paddingBottom: 32,
+  paddingLeft: 32,
+  primaryAxisSizingMode: "AUTO",
+  counterAxisSizingMode: "FIXED",
+  cornerRadius: 16,
+  fills: ["#FFFFFF"],
+  effects: [{ type: "DROP_SHADOW", color: "#0F172A1F", offset: { x: 0, y: 8 }, radius: 24 }],
+  children: [
+    {
+      type: "TEXT",
+      name: "Title",
+      characters: "Welcome back",
+      style: { fontFamily: "Inter", fontWeight: 700, fontSize: 24 },
+      fills: ["#0F172A"],
+      layoutSizingHorizontal: "FILL",
+    },
+    {
+      type: "FRAME",
+      name: "Email field",
+      height: 44,
+      layoutMode: "HORIZONTAL",
+      counterAxisAlignItems: "CENTER",
+      paddingLeft: 12,
+      paddingRight: 12,
+      cornerRadius: 8,
+      strokes: ["#CBD5E1"],
+      strokeWeight: 1,
+      strokeAlign: "INSIDE",
+      layoutSizingHorizontal: "FILL",
+      layoutSizingVertical: "FIXED",
+      children: [
+        { type: "TEXT", name: "Placeholder", characters: "Email", style: { fontSize: 14 }, fills: ["#64748B"] },
+      ],
+    },
+    {
+      type: "FRAME",
+      name: "Sign in button",
+      key: "signIn",
+      layoutMode: "HORIZONTAL",
+      primaryAxisAlignItems: "CENTER",
+      counterAxisAlignItems: "CENTER",
+      paddingTop: 12,
+      paddingBottom: 12,
+      cornerRadius: 8,
+      fills: ["#4F46E5"],
+      layoutSizingHorizontal: "FILL",
+      layoutSizingVertical: "HUG",
+      children: [
+        {
+          type: "TEXT",
+          name: "Label",
+          characters: "Sign in",
+          style: { fontFamily: "Inter", fontWeight: 600, fontSize: 16 },
+          fills: ["#FFFFFF"],
+        },
+      ],
+    },
+  ],
+};
+
+/**
  * Register all prompts with the MCP server
  * @param server - The MCP server instance
  */
@@ -15,7 +87,7 @@ export function registerPrompts(server: McpServer): void {
     "design_strategy",
     {
       description:
-        "Best practices for working with Figma designs",
+        "Best practices for creating and changing Figma designs",
     },
     (_extra) => {
       return {
@@ -24,79 +96,35 @@ export function registerPrompts(server: McpServer): void {
             role: "assistant",
             content: {
               type: "text",
-              text: `When working with Figma designs, follow these best practices:
+              text: `When creating or changing Figma designs, follow these practices:
 
-1. Start with Document Structure:
-   - First use get_document_info() to understand the current document
-   - Plan your layout hierarchy before creating elements
-   - Create a main container frame for each screen/section
+1. Find the target:
+   - Call get_pages or get_selection to find where to build, and pass that node ID as parentId.
+   - To copy or adapt an existing design, read it with get_node_info and a depth that covers every level (for example 8). The result is a valid create_node_tree spec.
 
-2. Naming Conventions:
-   - Use descriptive, semantic names for all elements
-   - Follow a consistent naming pattern (e.g., "Login Screen", "Logo Container", "Email Input")
-   - Group related elements with meaningful names
+2. Build with auto-layout, in one call:
+   - Describe the whole screen or component as one tree and create it with create_node_tree.
+   - Give containers layoutMode (VERTICAL or HORIZONTAL), padding, itemSpacing and alignment instead of x/y positions.
+   - Size children with layoutSizingHorizontal and layoutSizingVertical: FILL to stretch, HUG to fit the content, FIXED for a set size.
+   - Use layoutPositioning ABSOLUTE only for overlays such as badges; x and y are then relative to the parent.
+   - Give text its real font in style: fontFamily with fontStyle or fontWeight, fontSize, lineHeightPx, letterSpacing. Use textRuns for mixed styles within one text node.
+   - Write colors as hex strings, for example "#0F172A", or "#0F172A80" with alpha.
+   - Use semantic layer names ("Login card", "Email field"), and give a node a key when you need its ID afterwards.
 
-3. Layout Hierarchy:
-   - Create parent frames first, then add child elements
-   - For forms/login screens:
-     * Start with the main screen container frame
-     * Create a logo container at the top
-     * Group input fields in their own containers
-     * Place action buttons (login, submit) after inputs
-     * Add secondary elements (forgot password, signup links) last
+3. Change existing nodes:
+   - Use update_nodes to change several properties or several nodes at once.
+   - Use set_text_content or set_multiple_text_contents to replace text only.
 
-4. Input Fields Structure:
-   - Create a container frame for each input field
-   - Include a label text above or inside the input
-   - Group related inputs (e.g., username/password) together
+4. Check once, at the end:
+   - Read the warnings in the result. Each one names a node and what was not applied.
+   - Call get_visual_snapshot on the root, compare it with the intent, and fix differences with update_nodes.
 
-5. Element Creation:
-   - Use create_frame() for containers and input fields
-   - Use create_text() for labels, buttons text, and links
-   - Set appropriate colors and styles:
-     * Use fillColor for backgrounds
-     * Use strokeColor for borders
-     * Set proper fontWeight for different text elements
-
-6. Modifying existing elements:
-  - use set_text_content() to modify text content.
-
-7. Visual Hierarchy:
-   - Position elements in logical reading order (top to bottom)
-   - Maintain consistent spacing between elements
-   - Use appropriate font sizes for different text types:
-     * Larger for headings/welcome text
-     * Medium for input labels
-     * Standard for button text
-     * Smaller for helper text/links
-
-8. Best Practices:
-   - Verify each creation with get_node_info()
-   - Use parentId to maintain proper hierarchy
-   - Group related elements together in frames
-   - Keep consistent spacing and alignment
-
-Example Login Screen Structure:
-- Login Screen (main frame)
-  - Logo Container (frame)
-    - Logo (image/text)
-  - Welcome Text (text)
-  - Input Container (frame)
-    - Email Input (frame)
-      - Email Label (text)
-      - Email Field (frame)
-    - Password Input (frame)
-      - Password Label (text)
-      - Password Field (frame)
-  - Login Button (frame)
-    - Button Text (text)
-  - Helper Links (frame)
-    - Forgot Password (text)
-    - Don't have account (text)`,
+Example create_node_tree tree for a login card:
+${JSON.stringify(DESIGN_STRATEGY_EXAMPLE, null, 2)}`,
             },
           },
         ],
-        description: "Best practices for working with Figma designs",
+        description: "Best practices for creating and changing Figma designs",
       };
     }
   );
@@ -136,6 +164,9 @@ Example Login Screen Structure:
    - parentOffset is each node's position relative to its parent's bounding box
    - Nodes with visible: false are hidden in the design
    - Mixed-style text has textRuns; image fills have imageRef (pass it to get_asset as hash)
+
+5. Write in the same format:
+   - A get_node_info result, edited or not, is a valid create_node_tree spec, and update_nodes takes the same fields
 `,
             },
           },

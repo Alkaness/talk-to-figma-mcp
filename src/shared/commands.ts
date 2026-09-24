@@ -26,6 +26,7 @@ export const CREATION_COMMANDS = [
   "set_svg",
   "clone_node",
   "create_component_from_node",
+  "create_node_tree",
   // FigJam creation commands
   "create_section",
   "create_sticky",
@@ -138,6 +139,9 @@ export const FIGMA_COMMANDS = [
   "create_shape_with_text",
   "create_connector",
   "create_section",
+  "create_node_tree",
+  "update_nodes",
+  "get_available_fonts",
 ] as const;
 
 export type FigmaCommand = (typeof FIGMA_COMMANDS)[number];

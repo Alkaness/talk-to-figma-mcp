@@ -2,7 +2,7 @@
 
 [README](README.md) · [Installation](INSTALLATION.md) · [Commands](COMMANDS.md) · [Troubleshooting](TROUBLESHOOTING.md) · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 
-A Model Context Protocol (MCP) server that lets AI agents read, inspect and edit Figma files. It provides 107 tools, 5 prompts and 2 resources, and works with any Figma account, including free accounts. Figma Dev Mode is not required.
+A Model Context Protocol (MCP) server that lets AI agents read, inspect and edit Figma files. It provides 109 tools, 5 prompts and 2 resources, and works with any Figma account, including free accounts. Figma Dev Mode is not required.
 
 ## 1. Overview
 
@@ -87,6 +87,7 @@ The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
 | Area | Tools | Examples |
 |---|---:|---|
 | Document and pages | 17 | `get_document_info`, `get_node_info`, `get_css`, `get_pages` |
+| Node trees | 2 | `create_node_tree` and `update_nodes`, in the `get_node_info` format |
 | Creation | 12 | `create_frame`, `create_text`, `clone_node`, `boolean_operation` |
 | Modification | 24 | `set_fill_color`, `set_auto_layout`, `move_node`, `batch_operations` |
 | Text | 15 | `set_text_content`, `set_font_name`, `get_fonts_used` |
@@ -96,7 +97,7 @@ The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
 | Verification | 2 | `compare_to_figma` (SSIM score and diff heatmap), `capture_render` |
 | FigJam | 6 | `create_sticky`, `create_connector`, `create_section` |
 | REST API | 5 | `rest_get_file`, `rest_render_image`, `rest_get_comments` |
-| **Total** | **107** | |
+| **Total** | **109** | |
 
 The 5 REST API tools require a Figma personal access token ([INSTALLATION.md, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They read and render any file the token's owner can open, without the plugin.
 
@@ -121,7 +122,7 @@ Point the MCP client at `dist/bin/figma-mcp-server`.
 | Document | Contents |
 |---|---|
 | [INSTALLATION.md](INSTALLATION.md) | Relay, plugin and client setup; Docker; personal access token |
-| [COMMANDS.md](COMMANDS.md) | All 107 tools, 5 prompts and 2 resources |
+| [COMMANDS.md](COMMANDS.md) | All 109 tools, 5 prompts and 2 resources |
 | [TROUBLESHOOTING.md](TROUBLESHOOTING.md) | Security model and known error messages |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Architecture, invariants, development and testing |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |

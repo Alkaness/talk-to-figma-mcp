@@ -92,7 +92,7 @@ The same cause also produces "Figma plugin disconnected before the command could
 **Resolution:**
 
 1. Split the request into smaller steps.
-2. Use `batch_operations` for edits to many nodes. It reports progress, so it does not time out while it keeps working.
+2. Use `create_node_tree` or `update_nodes` for many nodes, and `batch_operations` for other commands. They report progress, so they do not time out while they keep working.
 3. In large documents, work on a specific selection or page.
 
 ### 3.4 Other command failures
@@ -103,13 +103,22 @@ The same cause also produces "Figma plugin disconnected before the command could
 2. Read the error message there.
 3. Confirm that the account has edit access to the file. View-only access rejects every change.
 
-### 3.5 Font not available
+### 3.5 Font errors: "is not available in Figma", "has no style", "Could not load font(s)"
+
+**Cause:** `create_node_tree` and `update_nodes` check every font against the fonts Figma can load before they change anything. The family is not installed or is spelled differently, or the family has no style of that name. Other tools report fonts that fail to load.
 
 **Resolution:**
 
-1. Call `load_font_async` to check whether the font can be loaded.
-2. Team fonts may need to be loaded manually in Figma first.
-3. Use an available alternative.
+1. Use a style from the list in the error. A `fontWeight` without `fontStyle` selects the closest available style.
+2. Install the font, then restart Figma so that it loads the font.
+3. Team fonts may need to be loaded manually in Figma first.
+4. Call `load_font_async` to check whether a font can be loaded.
+
+### 3.6 "The Figma plugin is older than this server" or "Unexpected response shape from the Figma plugin"
+
+**Cause:** the server sent a command that the plugin does not know, or the plugin returned a result in an older format. Figma keeps running the plugin code it imported until the plugin is imported again.
+
+**Resolution:** in Figma Desktop, open **Menu > Plugins > Development > Import plugin from manifest**, select `src/claude_mcp_plugin/manifest.json` from the updated project folder, and run the plugin again.
 
 ## 4. REST API errors
 

@@ -11,21 +11,22 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 | Section | Tools | Source file |
 |---|---:|---|
 | 2. Document and pages | 17 | `document-tools.ts` |
-| 3. Creation | 12 | `creation-tools.ts` |
-| 4. Modification | 24 | `modification-tools.ts` |
-| 5. Text | 15 | `text-tools.ts` |
-| 6. Styles | 3 | `style-tools.ts` |
-| 7. Variables | 4 | `variable-tools.ts` |
-| 8. Components and prototyping | 7 | `component-tools.ts` |
-| 9. Images and assets | 8 | `image-tools.ts` |
-| 10. Asset export | 2 | `asset-tools.ts` |
-| 11. SVG | 2 | `svg-tools.ts` |
-| 12. Verification | 2 | `verify-tools.ts` |
-| 13. FigJam | 6 | `figjam-tools.ts` |
-| 14. REST API (requires a token) | 5 | `rest-tools.ts` |
-| **Total** | **107** | |
+| 3. Node trees | 2 | `node-tree-tools.ts` |
+| 4. Creation | 12 | `creation-tools.ts` |
+| 5. Modification | 24 | `modification-tools.ts` |
+| 6. Text | 15 | `text-tools.ts` |
+| 7. Styles | 3 | `style-tools.ts` |
+| 8. Variables | 4 | `variable-tools.ts` |
+| 9. Components and prototyping | 7 | `component-tools.ts` |
+| 10. Images and assets | 8 | `image-tools.ts` |
+| 11. Asset export | 2 | `asset-tools.ts` |
+| 12. SVG | 2 | `svg-tools.ts` |
+| 13. Verification | 2 | `verify-tools.ts` |
+| 14. FigJam | 6 | `figjam-tools.ts` |
+| 15. REST API (requires a token) | 5 | `rest-tools.ts` |
+| **Total** | **109** | |
 
-102 tools communicate with the Figma plugin. The 5 REST API tools call the Figma REST API directly and are registered only when a personal access token is configured. The server also provides 5 prompts (section 15) and 2 resources (section 16).
+104 tools communicate with the Figma plugin. The 5 REST API tools call the Figma REST API directly and are registered only when a personal access token is configured. The server also provides 5 prompts (section 16) and 2 resources (section 17).
 
 ## 2. Document and pages (17)
 
@@ -33,7 +34,7 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 |---|---|
 | `get_document_info` | Returns detailed information about the current document. |
 | `get_selection` | Returns information about the current selection. |
-| `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). |
+| `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`; `rotation` is in degrees. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). The result is a valid `create_node_tree` spec. |
 | `get_nodes_info` | Returns several nodes in the same format as `get_node_info`, exported in batches of 5. Accepts a `depth` limit. |
 | `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection; `recursive=true` covers the subtree. |
 | `get_styles` | Returns all local styles in the document. |
@@ -49,15 +50,32 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 | `duplicate_page` | Duplicates a page with all of its contents. |
 | `set_current_page` | Deprecated and blocked by the relay. Pass the page ID as `parentId` on creation commands instead; use `get_pages` to find page IDs. |
 
-## 3. Creation (12)
+## 3. Node trees (2)
 
-All creation tools require `parentId`. See section 17.
+These tools take the format that `get_node_info` returns, so an agent writes in the same format it reads: a `get_node_info` result, edited or not, is a valid spec. One call replaces a chain of single-property calls, and sets properties that no other tool sets: FILL and HUG sizing, absolute positioning, constraints, stroke alignment, per-corner radii, fonts by family and weight, and mixed-style text runs.
+
+| Tool | Description |
+|---|---|
+| `create_node_tree` | Builds a node and its whole subtree under `parentId`, optionally at `index`. Returns the ID of every created node, keyed by the node's `key`, else its source `id`, else its path (`tree.children[0]`), and a warning for each property that was not applied. |
+| `update_nodes` | Changes the given properties of several existing nodes. Each update is `{ nodeId, ...fields }`. Returns a result per node and the warnings. |
+
+1. **Fields.** The fields are those of `get_node_info` output, plus `key`, `width`, `height`, `x`, `y` and `svg`. Colors are hex strings (`"#0F172A"`, or `"#0F172A80"` with alpha) or `{ r, g, b, a }`. `rotation` is in degrees.
+2. **Omitted fields** mean what they mean in `get_node_info` output: new frames, rectangles and ellipses have no fill, and frames do not clip. Text without fills is black; text without `fontFamily` uses Inter.
+3. **Fonts** are resolved against the fonts Figma has. `fontWeight` selects the family's own style name (Inter "Semi Bold", Poppins "SemiBold"). When the exact weight is missing, the closest one is used and a warning names it. A `fontStyle` the family lacks is an error that lists the available styles.
+4. **Position.** Children of an auto-layout frame are placed by the layout. `x` and `y` apply outside auto-layout and to children with `layoutPositioning: "ABSOLUTE"`.
+5. **Other node types.** `VECTOR`, `BOOLEAN_OPERATION`, `STAR` and other types without a builder take `svg` with their markup, or are cloned when `id` names a node in the same file. An `INSTANCE` is cloned from its source when the source exists, which keeps its overrides; otherwise it is created from `componentId`.
+6. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
+7. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
+
+## 4. Creation (12)
+
+All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
 | `create_rectangle` | Creates a rectangle. |
 | `create_frame` | Creates a frame. |
-| `create_text` | Creates a text node. Accepts a fixed `width` for wrapping. |
+| `create_text` | Creates a text node in Inter. Accepts a fixed `width` for wrapping. For other fonts, use `create_node_tree`. |
 | `create_ellipse` | Creates an ellipse. |
 | `create_polygon` | Creates a polygon. |
 | `create_star` | Creates a star. |
@@ -68,7 +86,7 @@ All creation tools require `parentId`. See section 17.
 | `flatten_node` | Flattens a node into a single vector. |
 | `boolean_operation` | Applies union, subtract, intersect or exclude to two or more nodes with the same parent. |
 
-## 4. Modification (24)
+## 5. Modification (24)
 
 | Tool | Description |
 |---|---|
@@ -95,9 +113,9 @@ All creation tools require `parentId`. See section 17.
 | `get_guide` | Reads the guides on a page. |
 | `set_annotation` | Adds an annotation label. Uses the proposed Annotations API (Figma Desktop only). |
 | `get_annotation` | Reads the annotations on a node. |
-| `batch_operations` | Applies many `{ command, params }` operations in one call and returns a per-operation result. Recommended for 3 or more nodes. |
+| `batch_operations` | Runs many `{ command, params }` plugin commands in one call and returns a result per operation, with the IDs of the nodes it created. Parameters use the plugin's own shape, which can differ from the tool of the same name. |
 
-## 5. Text (15)
+## 6. Text (15)
 
 | Tool | Description |
 |---|---|
@@ -117,7 +135,7 @@ All creation tools require `parentId`. See section 17.
 | `get_fonts_used` | Lists every font family, style and size used in a subtree, with occurrence counts. Defaults to the selection. |
 | `load_font_async` | Loads a font so it can be used. |
 
-## 6. Styles (3)
+## 7. Styles (3)
 
 | Tool | Description |
 |---|---|
@@ -125,7 +143,7 @@ All creation tools require `parentId`. See section 17.
 | `create_paint_style` | Creates a local solid paint style. |
 | `create_effect_style` | Creates a local effect style (shadows, blurs). |
 
-## 7. Variables (4)
+## 8. Variables (4)
 
 | Tool | Description |
 |---|---|
@@ -134,7 +152,7 @@ All creation tools require `parentId`. See section 17.
 | `apply_variable_to_node` | Binds a variable to one node property. Call once per property. |
 | `switch_variable_mode` | Sets which mode of a collection a node uses. |
 
-## 8. Components and prototyping (7)
+## 9. Components and prototyping (7)
 
 | Tool | Description |
 |---|---|
@@ -146,7 +164,7 @@ All creation tools require `parentId`. See section 17.
 | `set_reactions` | Sets prototype interactions (for example hover or click) on a node. |
 | `get_reactions` | Reads the prototype interactions on a node. |
 
-## 9. Images and assets (8)
+## 10. Images and assets (8)
 
 | Tool | Description |
 |---|---|
@@ -159,28 +177,28 @@ All creation tools require `parentId`. See section 17.
 | `apply_image_transform` | Adjusts position, scale and rotation of the image inside a node. |
 | `set_image_filters` | Applies color and light adjustments to image fills. |
 
-## 10. Asset export (2)
+## 11. Asset export (2)
 
 | Tool | Description |
 |---|---|
 | `classify_asset` | Recommends raster PNG, inline SVG or pure CSS for a node, with reasons. |
 | `extract_asset` | Exports a node without its effects (at the same resolution) and returns the effects as CSS (`box-shadow`, `filter`). Works on a temporary clone, so the document is not modified. |
 
-## 11. SVG (2)
+## 12. SVG (2)
 
 | Tool | Description |
 |---|---|
 | `set_svg` | Imports an SVG string as a vector node. Scripts and external resources are removed first. Maximum 500 KB. |
 | `get_svg` | Exports a node and its children as SVG markup. |
 
-## 12. Verification (2)
+## 13. Verification (2)
 
 | Tool | Description |
 |---|---|
 | `compare_to_figma` | Compares an implemented UI with a Figma node. Takes either `renderPath` (a PNG) or `url` (captured headlessly at the node's exact size). Reports SSIM similarity, color difference, a 3×3 region map, edge overflow and an optional brand-color check, and writes a diff heatmap PNG. |
 | `capture_render` | Captures a local URL with headless Chromium at an exact size and saves a PNG. Requires Chromium or Chrome; `CHROME_PATH` overrides the binary. |
 
-## 13. FigJam (6)
+## 14. FigJam (6)
 
 | Tool | Description |
 |---|---|
@@ -191,7 +209,7 @@ All creation tools require `parentId`. See section 17.
 | `create_connector` | Creates an arrow or line between two nodes or two canvas positions. |
 | `create_section` | Creates a section. |
 
-## 14. REST API (5)
+## 15. REST API (5)
 
 These tools are registered only when `FIGMA_PERSONAL_TOKEN` is set (see [Installation, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They work without the plugin, on any file the token's owner can open, addressed by figma.com URL or file key. The REST API cannot edit document content; `rest_post_comment` is its only write operation.
 
@@ -205,7 +223,7 @@ These tools are registered only when `FIGMA_PERSONAL_TOKEN` is set (see [Install
 
 The token is read once from the environment, sent only in the `X-Figma-Token` header and removed from error messages. HTTP 429 responses are retried using `Retry-After` or exponential backoff.
 
-## 15. MCP prompts (5)
+## 16. MCP prompts (5)
 
 | Prompt | Description |
 |---|---|
@@ -215,16 +233,16 @@ The token is read once from the environment, sent only in the `X-Figma-Token` he
 | `audit-accessibility` | Audits the selection against WCAG AA: contrast, text size, 44 px touch targets and hierarchy. |
 | `export-to-tailwind` | Converts the selection to HTML with Tailwind CSS classes. |
 
-## 16. MCP resources (2)
+## 17. MCP resources (2)
 
 | URI | Contents |
 |---|---|
 | `figma://local/selection` | The current selection (IDs, names, types), read live. |
 | `figma://local/document` | The current page, the page list and the top-level children, read live. |
 
-## 17. Rules for creation and layout
+## 18. Rules for creation and layout
 
-1. **`parentId` is required** on every creation command. Pass a page ID (from `get_pages`) or a frame ID. Several agents can edit the same file at once, so the server never relies on the "current page".
+1. **`parentId` is required** on every creation command, including `create_node_tree`. Pass a page ID (from `get_pages`) or a frame ID. Several agents can edit the same file at once, so the server never relies on the "current page".
 2. **Coordinates are local.** `move_node` and all creation tools use coordinates relative to the parent. `get_node_info` returns both:
    - `absoluteBoundingBox`: position relative to the canvas origin.
    - `localPosition`: position relative to the parent. Use this with `move_node`. It is returned for the requested node only.
@@ -237,9 +255,9 @@ The token is read once from the environment, sent only in the `X-Figma-Token` he
        localPosition:       { x: 50,  y: 30 }   get_node_info on the rectangle; use with move_node
        parentOffset:        { x: 50,  y: 30 }   get_node_info on the frame; use for CSS
    ```
-3. **Use `batch_operations`** for edits to 3 or more nodes. It avoids one round trip per node and reports each failure separately.
+3. **Build and edit in one call.** Use `create_node_tree` to build a subtree and `update_nodes` to change several nodes; both take the `get_node_info` format (section 3). `batch_operations` runs other plugin commands with the plugin's own parameter shapes.
 
-## 18. Writing effective requests
+## 19. Writing effective requests
 
 Specific requests produce predictable results:
 

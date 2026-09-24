@@ -1025,11 +1025,12 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "batch_operations",
     {
-      description: "Apply MANY edits to Figma in a single call instead of one tool call per node. " +
-      "Pass an array of { command, params } operations (e.g. set_text_content, move_node, resize_node, " +
-      "set_fill_color, set_corner_radius, rename_node, …). The plugin processes them in one pass while " +
-      "streaming progress (so the connection never times out) and returns a per-operation success/failure " +
-      "summary so you can retry only what failed. Use this whenever you need to update 3+ nodes.",
+      description: "Run many plugin commands in one call. Pass an array of { command, params } operations " +
+      "(for example set_text_content, move_node, resize_node, rename_node). params use the plugin's own shape, which " +
+      "can differ from the tool of the same name: set_fill_color takes { nodeId, color: { r, g, b, a } }. The plugin " +
+      "streams progress, so the call does not time out, and returns each operation's result with the node ID it " +
+      "returned. To change properties of several nodes, update_nodes is simpler: it takes the get_node_info format " +
+      "and validates it. To build nodes, use create_node_tree.",
       inputSchema: {
       operations: coerceJson(
         z
@@ -1062,13 +1063,21 @@ export function registerModificationTools(server: McpServer): void {
           total: number;
           succeeded: number;
           failed: number;
-          results: { index: number; command: string; ok: boolean; error?: string }[];
+          results: { index: number; command: string; ok: boolean; error?: string; id?: string }[];
         };
 
         const failures = typed.results.filter((r) => !r.ok);
+        // Edits return the node they changed; list only nodes an operation created.
+        const created = typed.results.filter((r) => r.ok && r.id && r.id !== operations[r.index]?.params?.nodeId);
         const lines = [
           `Batch complete: ${typed.succeeded}/${typed.total} succeeded, ${typed.failed} failed.`,
         ];
+        if (created.length > 0) {
+          lines.push("", "Created nodes:");
+          for (const r of created) {
+            lines.push(`  [#${r.index}] ${r.command}: ${r.id}`);
+          }
+        }
         if (failures.length > 0) {
           lines.push("", "Failed operations:");
           for (const f of failures) {

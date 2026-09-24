@@ -17,6 +17,19 @@ export function rgbaToHex(color: any): string {
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}${a === 255 ? '' : a.toString(16).padStart(2, '0')}`;
 }
 
+/**
+ * Parse a hex color into channels between 0 and 1. The inverse of rgbaToHex.
+ * @param hex - #RGB, #RGBA, #RRGGBB or #RRGGBBAA
+ * @returns The color, or null when the string is not a hex color
+ */
+export function hexToRgba(hex: string): { r: number; g: number; b: number; a: number } | null {
+  const match = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.exec(hex.trim());
+  if (!match) return null;
+  const digits = match[1].length <= 4 ? match[1].replace(/./g, "$&$&") : match[1];
+  const channel = (i: number) => parseInt(digits.slice(i, i + 2), 16) / 255;
+  return { r: channel(0), g: channel(2), b: channel(4), a: digits.length === 8 ? channel(6) : 1 };
+}
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /** Round to `dp` decimals. Float noise such as 119.99999237 costs tokens and invites arithmetic slips. */
@@ -42,8 +55,12 @@ function roundBox(box: any): Box | undefined {
   return { x: round(box.x), y: round(box.y), width: round(box.width), height: round(box.height) };
 }
 
+// The property lists below define the node format. create_node_tree and
+// update_nodes accept the same fields (utils/node-spec.ts); a test checks that
+// every field listed here is accepted there.
+
 /** Auto-layout container properties. Copied only when the node has a layoutMode. */
-const AUTO_LAYOUT_PROPS = [
+export const AUTO_LAYOUT_PROPS = [
   "layoutMode", "layoutWrap", "itemSpacing", "counterAxisSpacing",
   "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
   "primaryAxisAlignItems", "counterAxisAlignItems", "counterAxisAlignContent",
@@ -51,7 +68,7 @@ const AUTO_LAYOUT_PROPS = [
 ];
 
 /** Layout-child and appearance properties. */
-const NODE_PROPS = [
+export const NODE_PROPS = [
   "clipsContent",
   "layoutSizingHorizontal", "layoutSizingVertical", "layoutPositioning", "layoutGrow", "layoutAlign",
   "constraints", "minWidth", "maxWidth", "minHeight", "maxHeight",
@@ -59,9 +76,9 @@ const NODE_PROPS = [
 ];
 
 /** Stroke geometry. Copied only when the node has a visible stroke. */
-const STROKE_PROPS = ["strokeWeight", "strokeAlign", "individualStrokeWeights", "strokeDashes"];
+export const STROKE_PROPS = ["strokeWeight", "strokeAlign", "individualStrokeWeights", "strokeDashes"];
 
-const TEXT_STYLE_FIELDS = [
+export const TEXT_STYLE_FIELDS = [
   "fontFamily", "fontPostScriptName", "fontStyle", "fontWeight", "fontSize", "italic",
   "textCase", "textDecoration", "textAlignHorizontal", "textAlignVertical",
   "letterSpacing", "lineHeightPx", "lineHeightUnit", "lineHeightPercentFontSize",
@@ -227,6 +244,10 @@ function buildTextRuns(characters: unknown, overrides: unknown, table: unknown):
  *   coordinates, which are relative to the group's parent.
  * - Children deeper than `maxDepth` become `{ id, name, type }` stubs and the
  *   parent gets `_childrenTruncated: true`.
+ * - `rotation` is copied as given. The plugin sets it to the Plugin API value
+ *   in degrees before export (see annotateRotation in code.js), because the
+ *   REST format does not document its unit; rest_get_file passes the REST
+ *   value through.
  *
  * @param node - The node in REST format
  * @param maxDepth - Child levels returned in full detail (default: all)
