@@ -178,9 +178,11 @@ const nodeShape = {
   opacity: unit.optional(),
   blendMode: blendMode.optional(),
   isMask: z.boolean().optional(),
+  locked: z.boolean().optional(),
   cornerRadius: length.optional(),
   cornerSmoothing: unit.optional(),
-  rectangleCornerRadii: z.array(length).length(4).optional(),
+  // null keeps that corner as it is.
+  rectangleCornerRadii: z.array(length.nullable()).length(4).optional(),
   // Paint, stroke geometry (STROKE_PROPS) and effects.
   fills: z.array(paintSchema).optional(),
   strokes: z.array(paintSchema).optional(),
@@ -963,14 +965,17 @@ function appearanceOf(spec: NodeFields, create: CreateStep | undefined, label: s
   if (spec.strokeDashes !== undefined) out.dashPattern = spec.strokeDashes;
   if (spec.cornerRadius !== undefined) out.cornerRadius = spec.cornerRadius;
   if (spec.rectangleCornerRadii) {
-    const [topLeft, topRight, bottomRight, bottomLeft] = spec.rectangleCornerRadii;
-    Object.assign(out, { topLeftRadius: topLeft, topRightRadius: topRight, bottomRightRadius: bottomRight, bottomLeftRadius: bottomLeft });
+    const corners = ["topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius"];
+    spec.rectangleCornerRadii.forEach((radius, i) => {
+      if (radius !== null) out[corners[i]] = radius;
+    });
   }
   if (spec.cornerSmoothing !== undefined) out.cornerSmoothing = spec.cornerSmoothing;
   if (spec.effects !== undefined) out.effects = effectsOf(spec.effects, `${label}, effects`, ctx);
   if (spec.opacity !== undefined) out.opacity = spec.opacity;
   if (spec.blendMode !== undefined) out.blendMode = spec.blendMode;
   if (spec.isMask !== undefined) out.isMask = spec.isMask;
+  if (spec.locked !== undefined) out.locked = spec.locked;
   if (spec.clipsContent !== undefined) out.clipsContent = spec.clipsContent;
   else if (newType && NO_CLIP_TYPES.has(newType)) out.clipsContent = false;
   if (spec.visible !== undefined) out.visible = spec.visible;

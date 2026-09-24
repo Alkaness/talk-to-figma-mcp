@@ -160,6 +160,11 @@ describe('filterFigmaNode', () => {
       });
     });
 
+    it('keeps locked only when it is true', () => {
+      expect(filterFigmaNode({ id: '1:1', name: 'Card', type: 'RECTANGLE', locked: true }).locked).toBe(true);
+      expect(filterFigmaNode({ id: '1:1', name: 'Card', type: 'RECTANGLE', locked: false })).not.toHaveProperty('locked');
+    });
+
     it('keeps rectangleCornerRadii only when the corners differ', () => {
       expect(filterFigmaNode(pricingCardNode()).rectangleCornerRadii).toEqual([16, 16, 0, 0]);
       const uniform = filterFigmaNode({ id: '1:1', name: 'Card', type: 'RECTANGLE', rectangleCornerRadii: [8, 8, 8, 8] });

@@ -18,6 +18,11 @@ The plugin changed in this release. Close it in Figma and run it again from **Me
   3. Both accept hex colors and resolve `fontWeight` to each family's own style name (Inter "Semi Bold", Poppins "SemiBold").
   4. Both validate the whole spec before changing anything and name the path of each error.
   5. Both report every property that was not applied as a warning. A failed build removes what it created.
+- **`locked` in the node format.** `get_node_info` reports `locked: true`, and `create_node_tree` and `update_nodes` set it. `rectangleCornerRadii` in `update_nodes` takes `null` for a corner to keep, so one call can change some corners only. With these, `update_nodes` covers `set_node_properties`, `set_corner_radius` and `set_font_weight`.
+
+- **`get_visual_snapshot` takes `region`**, a part of the node in px from the top-left of its bounding box. A tall page was scaled to fit 2000 px, so a 1440 x 9879 px section rendered at 0.2x; a region renders at the requested scale. When a snapshot is scaled down, the result suggests a region. The plugin exports the region through a temporary slice, which it removes.
+- **`get_styled_text_segments` takes `properties`**, up to 10 style properties in one call. A segment ends where any of them changes. `property` still takes one.
+- **`get_css` takes `maxNodes`** (default 200, up to 1000) for `recursive=true`.
 
 ### Fixed
 - **`create_node_tree` was tested in Figma, and these problems were fixed.** The rebuilt test nodes include a 125-node section and a 122-node rotated group.
@@ -51,10 +56,16 @@ The plugin changed in this release. Close it in Figma and run it again from **Me
 - **`create_rectangle`, `create_frame` and `create_text` declared `parentId` optional**, although the relay rejects creation without it. The schemas now require it.
 
 ### Deprecated
-- **21 tools that `create_node_tree` and `update_nodes` cover.** These are the single-property setters (`set_fill_color`, `set_stroke_color`, `set_gradient`, `set_effects`, `set_auto_layout`, `move_node`, `resize_node`, `rename_node`, `set_font_name`, `set_font_size`, `set_line_height`, `set_paragraph_spacing`, `set_text_align`, `set_text_case`, `set_text_decoration`), the text content setters (`set_text_content`, `set_multiple_text_contents`) and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. They still work. Each description now begins with "Deprecated: use ..." and names the replacement field, and [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2) lists the mapping. Removing them in a later release shrinks the `tools/list` response from 104 tools and 88,711 characters to 83 tools and 67,558 characters, 24% less (measured without a REST token). Six more tools are covered except for one parameter and are kept: `rotate_node` (relative angle), `set_node_properties` (locked), `set_font_weight`, `set_letter_spacing` (percent), `set_corner_radius` (some corners only) and `set_image_filters`.
+- **24 tools that `create_node_tree` and `update_nodes` cover.** These are the single-property setters (`set_fill_color`, `set_stroke_color`, `set_gradient`, `set_effects`, `set_auto_layout`, `move_node`, `resize_node`, `rename_node`, `set_node_properties`, `set_corner_radius`, `set_font_name`, `set_font_weight`, `set_font_size`, `set_line_height`, `set_paragraph_spacing`, `set_text_align`, `set_text_case`, `set_text_decoration`), the text content setters (`set_text_content`, `set_multiple_text_contents`) and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. They still work. Each description now begins with "Deprecated: use ..." and names the replacement field, and [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2) lists the mapping. Removing them in a later release shrinks the `tools/list` response from 104 tools and 90,599 characters to 80 tools and 67,035 characters, 26% less (measured without a REST token). Three tools are kept: `rotate_node` (a relative angle), `set_letter_spacing` (percent) and `set_image_filters` (works without the image hash).
 - The `design_strategy`, `text_replacement_strategy` and `audit-accessibility` prompts, and the README examples, no longer name deprecated tools.
 
 ### Changed
+- **`compare_to_figma` reports where the render differs.** It compared on a grid of 120 cells across (12 design px per cell at 1440 px) and called 80% SSIM or more a close match. On a 1440 x 765 px section, moving the headline by 8 px still scored 96.7%, and a font size 2 px larger scored 90.6%, so both were "close". Now:
+  1. Grid cells cover 4 design px (120 to 600 cells across).
+  2. A cell differs when its structural mismatch exceeds 0.5 or a color channel of its mean differs by more than 60 of 255. The 1x snapshot of the unchanged section differs from its 2x snapshot by 31 at most. Moving a text or a 54 px circle by 2 px, and changing a color, a font or a font size, each exceeded 60.
+  3. Up to 5 hot spots, clusters of differing cells, are listed as boxes in design px from the node's top-left and in canvas coordinates, largest first, with the differing area in percent.
+  4. "Close match" now also requires no hot spots. The diff heatmap shows color differences as well as structural ones, and is at most about 2400 px on its longer side.
+- **`get_css` with `recursive=true`** skips hidden layers (it included them, although they are not rendered), indents each block by its depth below the requested node, and gives the text of text nodes. The number of skipped hidden layers is reported.
 - The `export-to-tailwind` and `read_design_strategy` prompts and the `get_node_info`, `get_nodes_info`, `get_css` and `rest_get_file` descriptions now describe the fields above.
 - `get_node_info` and `get_nodes_info` report `rotation` in degrees, counterclockwise, taken from the Plugin API; the REST format stores radians with the opposite sign (30 degrees exports as -0.5236). A rotated node also reports its `width` and `height` before rotation, which its bounding box does not show. This needs the updated plugin.
 - Messages about an outdated plugin now say to close the plugin and run it again, which loads the new `code.js`; importing the manifest again is not needed. [TROUBLESHOOTING.md, section 3.7](TROUBLESHOOTING.md#37-the-figma-plugin-is-older-than-this-server-or-unexpected-response-shape-from-the-figma-plugin) is corrected.
@@ -65,6 +76,7 @@ The plugin changed in this release. Close it in Figma and run it again from **Me
 ### Tests
 - **The plugin code now has automated tests.** `tests/plugin/node-tree.test.ts` runs `code.js` in a `vm` context against a fake Plugin API (`tests/plugin/fake-figma.ts`), with specs from the server's real normalizer. The fake enforces the rules the build order depends on and lays out auto-layout frames. 17 cases cover the pricing card round trip, the `design_strategy` example, placement after HUG growth, groups, rotated groups, clones, failure cleanup, `update_nodes`, `batch_operations`, `set_font_weight` and `get_available_fonts`. One case replays 54 combinations of text sizing modes and `textAutoResize` that were measured in Figma. Each of 9 deliberate breakages of the build order or of the fixes above makes at least one case fail.
 - `tests/plugin/syntax.test.ts` keeps `code.js` free of `?.`, `??`, object spread and `Promise.allSettled`.
+- `image-compare.test.ts` checks the grid width and the hot-spot boxes; `node-tree.test.ts` checks `locked` and corners kept with `null`; `new-tools.test.ts` checks `region` and the `get_css` layout.
 
 ## [1.5.0] - 2026-09-23
 

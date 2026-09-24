@@ -652,21 +652,27 @@ export function registerDocumentTools(server: McpServer): void {
   server.registerTool(
     "get_css",
     {
-      description: "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Use it alongside get_node_info: get_node_info returns the tree, the text and the Figma properties; get_css returns the CSS that Figma itself generates for each node. Defaults to the current selection. Use recursive=true to get CSS for the whole subtree (up to 200 nodes).",
+      description: "Get Figma's exact computed CSS (Dev Mode) for a node — sizing, padding, colors, gradients, border-radius, box-shadow, and the full font/line-height/letter-spacing. Use it alongside get_node_info: get_node_info returns the tree, the text and the Figma properties; get_css returns the CSS that Figma itself generates for each node. Defaults to the current selection. Use recursive=true for the whole subtree: blocks are indented by depth, text nodes include their text, and hidden layers are skipped. maxNodes caps the subtree (default 200, up to 1000).",
       inputSchema: {
       nodeId: z.string().optional().describe("Node to inspect. Omit to use the current selection."),
-      recursive: coerceBoolean.optional().describe("If true, return CSS for the node and all descendants (capped). Default false."),
+      recursive: coerceBoolean.optional().describe("If true, return CSS for the node and all visible descendants (capped). Default false."),
+      maxNodes: z.coerce.number().int().min(1).max(1000).optional().describe("With recursive: the most nodes to return (default 200, up to 1000)."),
     },
       annotations: { readOnlyHint: true },
     },
-    async ({ nodeId, recursive }) => {
+    async ({ nodeId, recursive, maxNodes }) => {
       try {
-        const result = await sendCommandToFigma("get_css", { nodeId, recursive: recursive ?? false }, 60000);
+        const cap = maxNodes ?? 200;
+        // getCSSAsync runs node by node (14 ms each on a 738-node section), and the plugin sends no progress.
+        const result = await sendCommandToFigma("get_css", { nodeId, recursive: recursive ?? false, maxNodes: cap }, 60000 + cap * 100);
         const typed = parseCommandResult("get_css", result);
 
-        const fmtBlock = (n: { id: string; name: string; type: string; css: Record<string, string> }) => {
-          const decls = Object.entries(n.css).map(([k, v]) => `  ${k}: ${v};`).join("\n");
-          return `/* "${n.name}" (${n.type}, ${n.id}) */\n${decls || "  /* no CSS */"}`;
+        const fmtBlock = (n: { id: string; name: string; type: string; css: Record<string, string>; depth?: number; characters?: string }) => {
+          const pad = "  ".repeat(n.depth ?? 0);
+          const decls = Object.entries(n.css).map(([k, v]) => `${pad}  ${k}: ${v};`).join("\n");
+          // "*/" inside the text would end the comment.
+          const text = n.characters !== undefined ? `\n${pad}/* text: ${JSON.stringify(n.characters).replace(/\*\//g, "* /")} */` : "";
+          return `${pad}/* "${n.name}" (${n.type}, ${n.id}) */${text}\n${decls || `${pad}  /* no CSS */`}`;
         };
 
         // Discriminate on the response shape (not the input flag) so an older
@@ -674,7 +680,8 @@ export function registerDocumentTools(server: McpServer): void {
         let text: string;
         if ("nodes" in typed) {
           text = typed.nodes.map(fmtBlock).join("\n\n");
-          if (typed.truncated) text += `\n\n/* … output truncated at ${typed.count} nodes; query a sub-node for the rest */`;
+          if (typed.hidden) text += `\n\n/* ${typed.hidden} hidden layer(s) skipped */`;
+          if (typed.truncated) text += `\n\n/* … output truncated at ${typed.count} nodes; raise maxNodes (up to 1000) or query a sub-node for the rest */`;
         } else {
           text = fmtBlock(typed);
         }

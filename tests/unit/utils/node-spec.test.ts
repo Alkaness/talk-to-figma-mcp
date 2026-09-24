@@ -551,6 +551,11 @@ describe('normalizeNodeUpdates', () => {
     );
   });
 
+  it('sets locked and only the corners that are not null', () => {
+    const { updates } = update([{ nodeId: '1:2', locked: true, rectangleCornerRadii: [8, null, null, 0] }]);
+    expect(updates[0].spec.props).toEqual({ topLeftRadius: 8, bottomLeftRadius: 0, locked: true });
+  });
+
   it('rejects children, a mismatched id and svg', () => {
     expect(() => update([{ nodeId: '1:2', children: [] }])).toThrow('update_nodes changes a node\'s own properties');
     expect(() => update([{ nodeId: '1:2', id: '9:9' }])).toThrow('id "9:9" does not match nodeId');

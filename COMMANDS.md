@@ -36,7 +36,7 @@ Tool calls are routed to the connected Figma plugin automatically. `join_channel
 | `get_selection` | Returns information about the current selection. |
 | `get_node_info` | Returns one node and its subtree: auto-layout and child sizing, absolute positioning, visibility, clipping, opacity, fills, strokes, corner radii, effects, and the full text style with `textRuns` for mixed-style text. Includes `absoluteBoundingBox`, `localPosition` and `parentOffset`; `rotation` is in degrees, counterclockwise, and a rotated node also has its `width` and `height` before rotation. Image `filters` use the scale that `set_image_filters` takes. Values equal to Figma's defaults are omitted. Accepts a `depth` limit (default 1). The result is a valid `create_node_tree` spec. |
 | `get_nodes_info` | Returns several nodes in the same format as `get_node_info`, exported in batches of 5. Accepts a `depth` limit. |
-| `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection; `recursive=true` covers the subtree. |
+| `get_css` | Returns Figma's computed Dev Mode CSS for a node: sizing, padding, colors, gradients, radius, shadows and typography. Defaults to the selection. `recursive=true` covers the visible subtree, with blocks indented by depth and the text of text nodes; `maxNodes` caps it (default 200, up to 1000). |
 | `get_styles` | Returns all local styles in the document. |
 | `get_local_components` | Returns all local components. |
 | `get_remote_components` | Returns components available from team libraries. |
@@ -69,7 +69,7 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 8. **Errors.** A spec is validated before anything is created, and each error names its path, for example `at tree.children[2] ("Badge"): ...`. If building fails partway, the partly built subtree is removed.
 9. **Truncated input.** `get_node_info` output cut off by its `depth` limit is rejected; read the node again with a larger depth. Hidden layers below the root are returned by `get_node_info` as stubs, and are skipped with a warning.
 
-10. **Deprecated tools.** The 21 tools below are deprecated because these two tools cover them. They still work, and each description names its replacement; they will be removed in a later release. Removing them shrinks the `tools/list` response from 104 tools and 88,711 characters to 83 tools and 67,558 characters, 24% less (measured without a REST token).
+10. **Deprecated tools.** The 24 tools below are deprecated because these two tools cover them. They still work, and each description names its replacement; they will be removed in a later release. Removing them shrinks the `tools/list` response from 104 tools and 90,599 characters to 80 tools and 67,035 characters, 26% less (measured without a REST token). `rotate_node`, `set_letter_spacing` and `set_image_filters` are kept: a relative rotation is a change rather than a node property, letter spacing in percent is a second unit beside the pixels that `get_node_info` reports, and image filters can be set without the image hash that `update_nodes` needs.
 
 | Deprecated tool | Replacement |
 |---|---|
@@ -81,7 +81,10 @@ These tools take the format that `get_node_info` returns, so an agent writes in 
 | `move_node` | `update_nodes` with `x`, `y` |
 | `resize_node` | `update_nodes` with `width`, `height` |
 | `rename_node` | `update_nodes` with `name` |
+| `set_node_properties` | `update_nodes` with `visible`, `locked`, `opacity` |
+| `set_corner_radius` | `update_nodes` with `cornerRadius`, or `rectangleCornerRadii: [topLeft, topRight, bottomRight, bottomLeft]` with `null` for each corner to keep |
 | `set_font_name` | `update_nodes` with `style.fontFamily`, `style.fontStyle` |
+| `set_font_weight` | `update_nodes` with `style.fontWeight`, which keeps each run's family and slant |
 | `set_font_size` | `update_nodes` with `style.fontSize` |
 | `set_line_height` | `update_nodes` with `style.lineHeightPx`, `style.lineHeightPercentFontSize` or `style.lineHeightUnit: "INTRINSIC_%"` |
 | `set_paragraph_spacing` | `update_nodes` with `style.paragraphSpacing` |
@@ -129,9 +132,9 @@ All creation tools require `parentId`. See section 18.
 | `reorder_node` | Changes the layer order of a node within its parent. |
 | `delete_node` | Deletes a node. |
 | `rename_node` | Deprecated: use `update_nodes`. Renames a node. |
-| `set_node_properties` | Sets visibility, lock state and opacity. Omitted properties are unchanged. |
+| `set_node_properties` | Deprecated: use `update_nodes`. Sets visibility, lock state and opacity. Omitted properties are unchanged. |
 | `convert_to_frame` | Converts a group or shape into a frame, keeping position, size, styling and children. |
-| `set_corner_radius` | Sets corner radius, per corner if needed. |
+| `set_corner_radius` | Deprecated: use `update_nodes`. Sets corner radius, per corner if needed. |
 | `set_auto_layout` | Deprecated: use `update_nodes`. Configures auto layout. |
 | `set_effects` | Deprecated: use `update_nodes`. Sets shadows and blurs. |
 | `set_effect_style_id` | Applies an effect style. |
@@ -151,7 +154,7 @@ All creation tools require `parentId`. See section 18.
 | `set_multiple_text_contents` | Deprecated: use `update_nodes`. Replaces the text of several text nodes in one call. |
 | `set_font_name` | Deprecated: use `update_nodes`. Sets font family and style. |
 | `set_font_size` | Deprecated: use `update_nodes`. Sets font size. |
-| `set_font_weight` | Sets the font weight, resolved to the style name of the node's own family (Inter "Semi Bold", Poppins "SemiBold"). When the family has no style of that weight, the closest one is used and named. Italic is kept. |
+| `set_font_weight` | Deprecated: use `update_nodes`. Sets the font weight, resolved to the style name of the node's own family (Inter "Semi Bold", Poppins "SemiBold"). When the family has no style of that weight, the closest one is used and named. Italic is kept. |
 | `set_letter_spacing` | Sets letter spacing. |
 | `set_line_height` | Deprecated: use `update_nodes`. Sets line height. |
 | `set_paragraph_spacing` | Deprecated: use `update_nodes`. Sets paragraph spacing. |
@@ -159,7 +162,7 @@ All creation tools require `parentId`. See section 18.
 | `set_text_decoration` | Deprecated: use `update_nodes`. Sets text decoration. |
 | `set_text_align` | Deprecated: use `update_nodes`. Sets horizontal and vertical alignment. Use `RIGHT` for right-to-left text. |
 | `set_text_style_id` | Applies a text style. |
-| `get_styled_text_segments` | Returns the styled segments of a text node. |
+| `get_styled_text_segments` | Splits a text node into segments in which the given style properties do not change. `properties` takes up to 10 at once; `property` takes one. |
 | `get_fonts_used` | Lists every font family, style and size used in a subtree, with occurrence counts. Defaults to the selection. |
 | `load_font_async` | Loads a font so it can be used. |
 
@@ -196,7 +199,7 @@ All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `get_visual_snapshot` | Returns a PNG of the selection or a node so the agent can inspect layout, spacing and fonts. Default scale 2x; large frames are scaled down. |
+| `get_visual_snapshot` | Returns a PNG of the selection or a node so the agent can inspect layout, spacing and fonts. Default scale 2x; a node whose longest side exceeds `maxDimension` (default 2000 px) is scaled down. `region` renders part of the node, in px from the top-left of its bounding box, at full scale. |
 | `scan_assets` | Lists image fills (deduplicated by hash, with size and usage) and vector nodes in a subtree. Returns no image bytes. |
 | `get_asset` | Saves one asset to a file: an image fill by `hash`, or a node export by `nodeId` (SVG by default, or PNG/JPG). Returns the path; SVG markup is also returned inline. Repeated hashes are served from a 64 MB in-memory cache. |
 | `set_image_fill` | Applies an image fill from a URL or base64 data. |
@@ -223,7 +226,7 @@ All creation tools require `parentId`. See section 18.
 
 | Tool | Description |
 |---|---|
-| `compare_to_figma` | Compares an implemented UI with a Figma node. Takes either `renderPath` (a PNG) or `url` (captured headlessly at the node's exact size). Reports SSIM similarity, color difference, a 3×3 region map, edge overflow and an optional brand-color check, and writes a diff heatmap PNG. |
+| `compare_to_figma` | Compares an implemented UI with a Figma node. Takes either `renderPath` (a PNG) or `url` (captured headlessly at the node's exact size). Compares on a grid of 4 design px cells, and reports SSIM similarity, up to 5 hot spots (boxes in design px and canvas coordinates where the render differs), the differing area, color difference, a 3×3 region map, edge overflow and an optional brand-color check. Writes a diff heatmap PNG. |
 | `capture_render` | Captures a local URL with headless Chromium at an exact size and saves a PNG. Requires Chromium or Chrome; `CHROME_PATH` overrides the binary. |
 
 ## 14. FigJam (6)

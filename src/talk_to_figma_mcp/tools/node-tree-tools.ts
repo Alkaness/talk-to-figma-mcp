@@ -29,10 +29,11 @@ const CREATE_NODE_TREE_DESCRIPTION =
   "applied. Prefer it to chains of create_* and set_* calls.\n" +
   "Node fields: type (FRAME, TEXT, RECTANGLE, ELLIPSE, LINE, GROUP, COMPONENT, or INSTANCE with componentId); name; key; " +
   "width, height (before rotation); x, y relative to the parent; rotation in degrees, counterclockwise; visible, opacity, " +
-  "blendMode; fills and strokes as hex " +
+  "blendMode, locked; fills and strokes as hex " +
   "strings (\"#0F172A\", \"#0F172A80\") or paints {type: SOLID, GRADIENT_LINEAR, GRADIENT_RADIAL or IMAGE, color, opacity, " +
   "gradientStops, gradientHandlePositions, imageRef, scaleMode}; strokeWeight, strokeAlign, strokeDashes, " +
-  "individualStrokeWeights; cornerRadius, or rectangleCornerRadii [topLeft, topRight, bottomRight, bottomLeft]; effects " +
+  "individualStrokeWeights; cornerRadius, or rectangleCornerRadii [topLeft, topRight, bottomRight, bottomLeft] (null keeps " +
+  "a corner); effects " +
   "(DROP_SHADOW, INNER_SHADOW, LAYER_BLUR, BACKGROUND_BLUR); clipsContent. Auto-layout: layoutMode, paddingTop/Right/" +
   "Bottom/Left, itemSpacing, counterAxisSpacing, layoutWrap, primaryAxisAlignItems, counterAxisAlignItems, " +
   "primaryAxisSizingMode, counterAxisSizingMode (an omitted mode hugs the content, unless that axis has layoutSizing " +
@@ -49,7 +50,8 @@ const UPDATE_NODES_DESCRIPTION =
   "Change the properties of several existing nodes in one call. Each update is { nodeId, ...fields } with the fields of " +
   "create_node_tree except type and children; only the fields given change, and a get_node_info result without its " +
   "children can be passed as it is. Use it for what the single-property tools cannot set: FILL and HUG sizing, absolute " +
-  "positioning, constraints, stroke alignment, per-corner radii, fonts by family and weight, and mixed-style text runs. " +
+  "positioning, constraints, stroke alignment, per-corner radii (null keeps a corner), locking, fonts by family and weight, " +
+  "and mixed-style text runs. " +
   "width and height resize; absoluteBoundingBox, localPosition and parentOffset are read-only and ignored. Font fields " +
   "that a style or run leaves out keep the text's current ones: fontWeight alone keeps the family, and fontFamily alone " +
   "keeps each run's weight and slant.";

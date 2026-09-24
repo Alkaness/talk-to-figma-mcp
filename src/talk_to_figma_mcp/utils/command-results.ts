@@ -42,6 +42,9 @@ const cssBlock = z.object({
   name: z.string(),
   type: z.string(),
   css: z.record(z.string()),
+  // Older plugins send neither.
+  depth: z.number().optional(),
+  characters: z.string().optional(),
 });
 
 export const COMMAND_RESULT_SCHEMAS = {
@@ -59,6 +62,8 @@ export const COMMAND_RESULT_SCHEMAS = {
       height: z.number(),
       absoluteBoundingBox: box.nullable(),
       selectionCount: z.number(),
+      // The part of the node that was exported; older plugins ignore a region.
+      region: box.optional(),
     })
     .passthrough(),
 
@@ -170,6 +175,7 @@ export const COMMAND_RESULT_SCHEMAS = {
       root: z.string(),
       count: z.number(),
       truncated: z.boolean(),
+      hidden: z.number().optional(),
       nodes: z.array(cssBlock),
     }),
   ]),

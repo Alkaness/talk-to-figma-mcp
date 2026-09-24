@@ -2,7 +2,7 @@ import { PNG } from 'pngjs';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { compareImages, writeDiffHeatmap, ssimMap } from '../../../src/talk_to_figma_mcp/utils/image-compare';
+import { compareImages, gridWidthFor, writeDiffHeatmap, ssimMap } from '../../../src/talk_to_figma_mcp/utils/image-compare';
 
 /** Build a PNG buffer of size w×h, coloring each pixel via fn(x,y) → [r,g,b]. */
 function makePng(w: number, h: number, fn: (x: number, y: number) => [number, number, number]): Buffer {
@@ -74,6 +74,38 @@ describe('compareImages', () => {
     const b = makePng(160, 120, (x) => (x < 120 ? [255, 103, 1] : [0, 0, 0])); // lots of orange
     const r = compareImages(a, b, { targetColor: '#ff6701' });
     expect(r.colorMatch!.ok).toBe(false);
+  });
+});
+
+describe('hot spots', () => {
+  it('uses one cell per 4 design px, between 120 and 600, and no more cells than pixels', () => {
+    expect(gridWidthFor(1440, 2880, 1440)).toBe(360);
+    expect(gridWidthFor(266, 532, 266)).toBe(120);
+    expect(gridWidthFor(4000, 8000, 4000)).toBe(600);
+    expect(gridWidthFor(1440, 2880, 300)).toBe(300);
+    expect(gridWidthFor(undefined, 160, 160)).toBe(120);
+  });
+
+  it('boxes a moved bar and a recolored block in design px, and nothing in identical images', () => {
+    // An 800 x 400 node at 1x: 200 cells of 4 px across.
+    const scene = (dx: number, second: [number, number, number]) => makePng(800, 400, (x, y) => {
+      if (x >= 160 + dx && x < 176 + dx && y >= 160 && y < 240) return [240, 240, 240];
+      if (x >= 560 && x < 640 && y >= 240 && y < 320) return second;
+      return [16, 16, 16];
+    });
+    const ref = scene(0, [255, 103, 1]);
+    const same = compareImages(ref, ref, { designWidth: 800, designHeight: 400 });
+    expect(same.hotSpots).toEqual([]);
+    expect(same.mismatchArea).toBe(0);
+
+    const r = compareImages(scene(8, [255, 255, 255]), ref, { designWidth: 800, designHeight: 400 });
+    expect(r.gridWidth).toBe(200);
+    // The bar's old and new edges are 2 cells apart, so they form one box.
+    const [moved, recolored] = [...r.hotSpots].sort((p, q) => p.x - q.x);
+    expect(r.hotSpots).toHaveLength(2);
+    expect(moved.x).toBeGreaterThanOrEqual(148);
+    expect(moved.x + moved.width).toBeLessThanOrEqual(196);
+    expect(recolored).toMatchObject({ x: 560, y: 240, width: 80, height: 80 });
   });
 });
 

@@ -264,9 +264,11 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_font_weight",
     {
-      description:
+      description: deprecated(
+        "set_font_weight",
         "Set the font weight of a text node in Figma. The weight is resolved to the node's own font family's style name " +
-        "(Inter \"Semi Bold\", Poppins \"SemiBold\"); when the family has no style of that weight, the closest one is used and named. Italic is kept.",
+        "(Inter \"Semi Bold\", Poppins \"SemiBold\"); when the family has no style of that weight, the closest one is used and named. Italic is kept."
+      ),
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
       weight: z.coerce.number().min(1).max(1000).describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
@@ -499,32 +501,43 @@ export function registerTextTools(server: McpServer): void {
   );
 
   // Get Styled Text Segments Tool
+  const segmentProperty = z.enum([
+    "fillStyleId",
+    "fontName",
+    "fontSize",
+    "textCase",
+    "textDecoration",
+    "textStyleId",
+    "fills",
+    "letterSpacing",
+    "lineHeight",
+    "fontWeight",
+  ]);
   server.registerTool(
     "get_styled_text_segments",
     {
-      description: "Get text segments with specific styling in a text node",
+      description:
+        "Split a text node into segments in which the given style properties do not change, with each segment's values. " +
+        "Pass properties to read several in one call. get_node_info already returns textRuns with the full style of each " +
+        "run; use this tool for fillStyleId and textStyleId, or for the Plugin API's own values.",
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to analyze"),
-      property: z.enum([
-        "fillStyleId", 
-        "fontName", 
-        "fontSize", 
-        "textCase", 
-        "textDecoration", 
-        "textStyleId", 
-        "fills", 
-        "letterSpacing", 
-        "lineHeight", 
-        "fontWeight"
-      ]).describe("The style property to analyze segments by"),
+      property: segmentProperty.optional().describe("One style property to split by. Give this or properties."),
+      properties: coerceJson(z.array(segmentProperty).min(1).max(10))
+        .optional()
+        .describe("Several style properties to split by; a segment ends where any of them changes."),
     },
       annotations: { readOnlyHint: true },
     },
-    async ({ nodeId, property }) => {
+    async ({ nodeId, property, properties }) => {
       try {
+        const list = properties ?? (property ? [property] : []);
+        if (list.length === 0) throw new Error("Pass property or properties");
+        // property keeps older plugins, which read only property, working for the first one.
         const result = await sendCommandToFigma("get_styled_text_segments", {
           nodeId,
-          property
+          property: list[0],
+          properties: list,
         });
         
         return {

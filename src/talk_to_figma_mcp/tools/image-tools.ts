@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
-import { coerceBoolean } from "../utils/schema-helpers";
+import { coerceBoolean, coerceJson } from "../utils/schema-helpers";
 import { parseCommandResult, CommandResult } from "../utils/command-results";
 import fs from "fs";
 import path from "path";
@@ -35,7 +35,7 @@ export function registerImageTools(server: McpServer): void {
   server.registerTool(
     "get_visual_snapshot",
     {
-      description: "Capture a PNG image of the current Figma selection (or a specific node) so you can SEE the rendered result — layout, spacing, alignment, fonts, and colors. Use this to verify your work after creating or editing nodes: render, look, and correct any placement drift or font mismatch before telling the user you're done. Defaults to the current selection at 2x scale; no nodeId needed.",
+      description: "Capture a PNG image of the current Figma selection (or a specific node) so you can SEE the rendered result — layout, spacing, alignment, fonts, and colors. Use this to verify your work after creating or editing nodes: render, look, and correct any placement drift or font mismatch before telling the user you're done. Defaults to the current selection at 2x scale; no nodeId needed. A node whose longest side exceeds maxDimension at that scale is scaled down; pass region to see part of it at full scale.",
       inputSchema: {
       nodeId: z
         .string()
@@ -51,14 +51,17 @@ export function registerImageTools(server: McpServer): void {
         .positive()
         .optional()
         .describe("Cap on the longest output side in px (default 2000). Keeps very large frames fast and reviewable."),
+      region: coerceJson(z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive() }))
+        .optional()
+        .describe("Only this part of the node, in px from the top-left of its bounding box, e.g. { x: 0, y: 1200, width: 1440, height: 900 }. Everything visible in that area is rendered."),
     },
       annotations: { readOnlyHint: true },
     },
-    async ({ nodeId, scale, maxDimension }) => {
+    async ({ nodeId, scale, maxDimension, region }) => {
       try {
         const result = await sendCommandToFigma(
           "get_visual_snapshot",
-          { nodeId, scale: scale ?? 2, maxDimension: maxDimension ?? 2000 },
+          { nodeId, scale: scale ?? 2, maxDimension: maxDimension ?? 2000, ...(region ? { region } : {}) },
           120000 // 120s: large frames can take a while to rasterize
         );
         const typed = parseCommandResult("get_visual_snapshot", result);
@@ -71,9 +74,18 @@ export function registerImageTools(server: McpServer): void {
             ? `Absolute position: x=${Math.round(box.x)}, y=${Math.round(box.y)} (canvas coordinates)`
             : `Absolute position: unavailable for this node type`,
         ];
+        const area = typed.region;
+        if (area) {
+          lines.push(`Region: x=${Math.round(area.x)}, y=${Math.round(area.y)}, ${Math.round(area.width)}×${Math.round(area.height)} px of the node`);
+        } else if (region) {
+          lines.push("Note: region was ignored, so this is the whole node. The Figma plugin is older than this server: close the plugin in Figma and run it again.");
+        }
         if (typed.capped) {
+          const cap = maxDimension ?? 2000;
+          const side = Math.floor(cap / typed.requestedScale);
           lines.push(
-            `Note: scale auto-reduced from ${typed.requestedScale}x to fit within the ${maxDimension ?? 2000}px cap (large frame).`
+            `Note: scale auto-reduced from ${typed.requestedScale}x to fit within the ${cap}px cap (large frame).` +
+            (area ? "" : ` To see part of it at ${typed.requestedScale}x, pass region { x, y, width, height } with sides up to ${side} px, for example { x: 0, y: 0, width: ${Math.min(side, Math.round(typed.width))}, height: ${Math.min(side, Math.round(typed.height))} }.`)
           );
         }
         if (typed.selectionCount > 1) {

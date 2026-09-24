@@ -72,7 +72,7 @@ export const NODE_PROPS = [
   "clipsContent",
   "layoutSizingHorizontal", "layoutSizingVertical", "layoutPositioning", "layoutGrow", "layoutAlign",
   "constraints", "minWidth", "maxWidth", "minHeight", "maxHeight",
-  "opacity", "blendMode", "isMask", "cornerRadius", "cornerSmoothing", "componentId",
+  "opacity", "blendMode", "isMask", "locked", "cornerRadius", "cornerSmoothing", "componentId",
 ];
 
 /** Stroke geometry. Copied only when the node has a visible stroke. */
@@ -105,6 +105,7 @@ const NO_OP_VALUES: Record<string, unknown[]> = {
   opacity: [1],
   blendMode: ["PASS_THROUGH", "NORMAL"],
   isMask: [false],
+  locked: [false],
   cornerRadius: [0],
   cornerSmoothing: [0],
   italic: [false],

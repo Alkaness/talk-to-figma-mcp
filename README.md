@@ -90,7 +90,7 @@ The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
 | Node trees | 2 | `create_node_tree` and `update_nodes`, in the `get_node_info` format |
 | Creation | 12 | `clone_node`, `group_nodes`, `boolean_operation`, `create_polygon` |
 | Modification | 24 | `batch_operations`, `rotate_node`, `reorder_node`, `delete_node` |
-| Text | 15 | `set_font_weight`, `get_styled_text_segments`, `get_fonts_used` |
+| Text | 15 | `set_letter_spacing`, `get_styled_text_segments`, `get_fonts_used` |
 | Styles and variables | 7 | `create_text_style`, `get_variables`, `apply_variable_to_node` |
 | Components and prototyping | 7 | `create_component_instance`, `set_instance_variant`, `set_reactions` |
 | Images, assets and SVG | 12 | `get_visual_snapshot`, `scan_assets`, `get_asset`, `extract_asset`, `get_svg` |
@@ -99,7 +99,7 @@ The command queue was contributed by [@mmabas77](https://github.com/mmabas77).
 | REST API | 5 | `rest_get_file`, `rest_render_image`, `rest_get_comments` |
 | **Total** | **109** | |
 
-21 of these tools are deprecated because `create_node_tree` and `update_nodes` cover them: the single-property setters for fills, strokes, gradients, effects, auto-layout, position, size, name and text style, the text content setters, and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. They still work, and each description names its replacement. See [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2).
+24 of these tools are deprecated because `create_node_tree` and `update_nodes` cover them: the single-property setters for fills, strokes, gradients, effects, auto-layout, position, size, name, visibility, lock state, opacity, corner radius, font weight and text style, the text content setters, and `create_frame`, `create_rectangle`, `create_ellipse` and `create_text`. They still work, and each description names its replacement. See [COMMANDS.md, section 3](COMMANDS.md#3-node-trees-2).
 
 The 5 REST API tools require a Figma personal access token ([INSTALLATION.md, section 5](INSTALLATION.md#5-optional-figma-personal-access-token)). They read and render any file the token's owner can open, without the plugin.
 

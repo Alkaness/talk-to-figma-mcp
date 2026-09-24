@@ -25,9 +25,9 @@ beforeAll(() => {
 });
 
 describe('deprecated tools', () => {
-  it('lists 21 registered tools, each described as deprecated with its replacement', () => {
+  it('lists 24 registered tools, each described as deprecated with its replacement', () => {
     const names = Object.keys(DEPRECATED_TOOLS);
-    expect(names).toHaveLength(21);
+    expect(names).toHaveLength(24);
     for (const name of names) {
       expect(descriptions.get(name)).toMatch(new RegExp(`^Deprecated: use ${DEPRECATED_TOOLS[name].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\. \\S`));
     }

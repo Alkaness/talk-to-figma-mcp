@@ -290,7 +290,7 @@ describe('create_node_tree in the plugin', () => {
       width: 400, fills: ['#FFFFFF', paint], strokes: ['#000000'], strokeWeight: 2, strokeAlign: 'OUTSIDE',
       individualStrokeWeights: { top: 1, right: 2, bottom: 3, left: 4 }, strokeDashes: [4, 2],
       cornerRadius: 8, rectangleCornerRadii: [1, 2, 3, 4], cornerSmoothing: 0.6, opacity: 0.9, blendMode: 'MULTIPLY',
-      isMask: false, clipsContent: true, visible: true,
+      isMask: false, locked: true, clipsContent: true, visible: true,
       effects: [
         { type: 'DROP_SHADOW', color: '#0000001A', offset: { x: 0, y: 2 }, radius: 4 },
         { type: 'INNER_SHADOW', color: '#000', radius: 1 },
@@ -321,7 +321,7 @@ describe('create_node_tree in the plugin', () => {
 
     expect(result.warnings).toEqual([]);
     const frame = node(plugin, result.rootId);
-    expect(frame).toMatchObject({ layoutWrap: 'WRAP', strokeTopWeight: 1, strokeLeftWeight: 4, dashPattern: [4, 2], topLeftRadius: 1, bottomLeftRadius: 4, blendMode: 'MULTIPLY' });
+    expect(frame).toMatchObject({ layoutWrap: 'WRAP', strokeTopWeight: 1, strokeLeftWeight: 4, dashPattern: [4, 2], topLeftRadius: 1, bottomLeftRadius: 4, blendMode: 'MULTIPLY', locked: true });
     const text = frame.children[3];
     expect(text).toMatchObject({ textTruncation: 'ENDING', maxLines: 2, hyperlink: { type: 'URL', value: 'https://example.com' } });
     expect(text.rangeCalls.map((call: unknown[]) => call[0])).toEqual([
@@ -391,6 +391,15 @@ describe('update_nodes in the plugin', () => {
       { nodeId: '8:2', ok: true },
     ]);
     expect([target.opacity, target.rotation]).toEqual([0.5, 45]);
+  });
+
+  it('keeps the corners given as null, and locks', async () => {
+    const plugin = loadPlugin();
+    const target = plugin.figma.add('RECTANGLE', plugin.page, { topLeftRadius: 4, topRightRadius: 4, bottomRightRadius: 4, bottomLeftRadius: 4 }, '8:3');
+
+    await plugin.updateNodes([{ nodeId: '8:3', rectangleCornerRadii: [12, null, null, 0], locked: true }]);
+
+    expect([target.topLeftRadius, target.topRightRadius, target.bottomRightRadius, target.bottomLeftRadius, target.locked]).toEqual([12, 4, 4, 0, true]);
   });
 });
 

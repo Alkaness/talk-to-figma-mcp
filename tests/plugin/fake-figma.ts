@@ -42,7 +42,7 @@ const FRAMES = new Set(["FRAME", "COMPONENT", "INSTANCE"]);
 /** Plain properties of each node type, with Figma's initial values. */
 function plainProps(type: string): Record<string, unknown> {
   if (type === "PAGE") return {};
-  const out: Record<string, unknown> = { effects: [], opacity: 1, blendMode: "PASS_THROUGH", isMask: false, visible: true };
+  const out: Record<string, unknown> = { effects: [], opacity: 1, blendMode: "PASS_THROUGH", isMask: false, locked: false, visible: true };
   if (type === "GROUP") return out;
   Object.assign(out, {
     fills: [], strokes: [], strokeWeight: 1, strokeAlign: "INSIDE", dashPattern: [],

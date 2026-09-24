@@ -285,7 +285,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_corner_radius",
     {
-      description: "Set the corner radius of a node in Figma",
+      description: deprecated("set_corner_radius", "Set the corner radius of a node in Figma"),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       radius: z.coerce.number().min(0).describe("Corner radius value"),
@@ -532,7 +532,7 @@ export function registerModificationTools(server: McpServer): void {
   server.registerTool(
     "set_node_properties",
     {
-      description: "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged.",
+      description: deprecated("set_node_properties", "Set visibility, lock state, and/or opacity of a node in Figma. Only provided properties are changed; omitted properties remain unchanged."),
       inputSchema: {
       nodeId: z.string().describe("The ID of the node to modify"),
       visible: coerceBoolean.optional().describe("Set node visibility (true = visible, false = hidden)"),

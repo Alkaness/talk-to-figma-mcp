@@ -112,6 +112,10 @@ export interface CompareResult {
   meanDiff: number;          // 0-255 mean abs grayscale difference
   colorDelta: number;        // 0-255 mean per-channel RGB difference
   regions: number[][];       // 3×3 grid of structural mismatch (0=match … 100=worst)
+  /** Percentage of grid cells that differ (see HOT_CELL_MISMATCH and HOT_CELL_COLOR_DELTA). */
+  mismatchArea: number;
+  /** Up to 5 clusters of differing cells, largest first, in design px. */
+  hotSpots: HotSpot[];
   worstRegion: { row: number; col: number; diff: number; label: string };
   edgeOverflow: number;      // 0-1: bright render content in outer margins absent from reference
   colorMatch?: { target: string; renderPct: number; refPct: number; ok: boolean };
@@ -127,14 +131,26 @@ const REGION_LABELS = [
   ["bottom-left", "bottom-center", "bottom-right"],
 ];
 
-const GRID_WIDTH = 120;
+/** A grid cell covers this many design px, so a drift of 2 px changes the cells along the moved edges. */
+const CELL_DESIGN_PX = 4;
+const MIN_GRID_WIDTH = 120;
+const MAX_GRID_WIDTH = 600;
 
-function buildGrids(renderPng: Buffer, referencePng: Buffer) {
+/**
+ * The grid width for a node `designWidth` px wide: one cell per 4 design px,
+ * between 120 and 600 cells, and never more cells than either image has pixels.
+ */
+export function gridWidthFor(designWidth: number | undefined, ...imageWidths: number[]): number {
+  const wanted = designWidth ? Math.round(designWidth / CELL_DESIGN_PX) : MIN_GRID_WIDTH;
+  return Math.max(1, Math.min(MAX_GRID_WIDTH, Math.max(MIN_GRID_WIDTH, wanted), ...imageWidths));
+}
+
+function buildGrids(renderPng: Buffer, referencePng: Buffer, designWidth?: number) {
   const render = decodePng(renderPng);
   const reference = decodePng(referencePng);
-  const GW = GRID_WIDTH;
+  const GW = gridWidthFor(designWidth, render.width, reference.width);
   const GH = Math.max(24, Math.round((GW * reference.height) / reference.width));
-  return { a: toGrid(render, GW, GH), b: toGrid(reference, GW, GH), GW, GH };
+  return { a: toGrid(render, GW, GH), b: toGrid(reference, GW, GH), GW, GH, width: reference.width, height: reference.height };
 }
 
 /** Precomputed decode + grid + SSIM data, shareable between compareImages and writeDiffHeatmap. */
@@ -143,6 +159,9 @@ export interface ComparisonData {
   b: { gray: Float64Array; rgb: Float64Array };
   GW: number;
   GH: number;
+  /** The reference image's size in px. */
+  width: number;
+  height: number;
   mssim: number;
   cell: Float64Array;
 }
@@ -150,25 +169,93 @@ export interface ComparisonData {
 /**
  * Decode both PNGs, build the comparison grids, and run SSIM — the expensive
  * part of a comparison. Pass the result to compareImages/writeDiffHeatmap to
- * avoid doing this work twice on the same pair of buffers.
+ * avoid doing this work twice on the same pair of buffers. `designWidth` is
+ * the node's width in design px, which sets the grid (see gridWidthFor).
  */
-export function prepareComparison(renderPng: Buffer, referencePng: Buffer): ComparisonData {
-  const { a, b, GW, GH } = buildGrids(renderPng, referencePng);
-  const { mssim, cell } = ssimMap(a.gray, b.gray, GW, GH);
-  return { a, b, GW, GH, mssim, cell };
+export function prepareComparison(renderPng: Buffer, referencePng: Buffer, opts: { designWidth?: number } = {}): ComparisonData {
+  const grids = buildGrids(renderPng, referencePng, opts.designWidth);
+  const { mssim, cell } = ssimMap(grids.a.gray, grids.b.gray, grids.GW, grids.GH);
+  return { ...grids, mssim, cell };
 }
 
+/**
+ * A cell differs when its structural mismatch (1 - SSIM) exceeds 0.5, or a
+ * color channel of its mean differs by more than 60 of 255. Measured on a
+ * 1440 x 765 section, with 4 px cells, against its 2x snapshot: the 1x
+ * snapshot of the same section differs by 31 at most; moving a text or a
+ * 54 px circle by 2 px, changing a color, a font or a font size exceeds 60.
+ */
+const HOT_CELL_MISMATCH = 0.5;
+const HOT_CELL_COLOR_DELTA = 60;
+
+/** A box in design px from the node's top-left. */
+export interface HotSpot {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Clusters of differing cells, largest first, as boxes in design px (`sx`,
+ * `sy` are design px per cell). Cells up to 2 apart join one cluster, so the
+ * glyph edges of a moved text form one box. A box names where to look: the
+ * nodes inside it moved, changed size or color, or render differently.
+ */
+function hotSpotsOf(hot: Uint8Array, GW: number, GH: number, sx: number, sy: number, limit = 5): HotSpot[] {
+  const seen = new Uint8Array(GW * GH);
+  const clusters: Array<HotSpot & { cells: number }> = [];
+  for (let start = 0; start < GW * GH; start++) {
+    if (seen[start] || !hot[start]) continue;
+    let minX = GW, minY = GH, maxX = 0, maxY = 0, cells = 0;
+    const stack = [start];
+    seen[start] = 1;
+    while (stack.length > 0) {
+      const i = stack.pop()!;
+      const x = i % GW, y = (i - x) / GW;
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y); maxY = Math.max(maxY, y);
+      cells++;
+      for (let ny = Math.max(0, y - 2); ny <= Math.min(GH - 1, y + 2); ny++) {
+        for (let nx = Math.max(0, x - 2); nx <= Math.min(GW - 1, x + 2); nx++) {
+          const j = ny * GW + nx;
+          if (!seen[j] && hot[j]) { seen[j] = 1; stack.push(j); }
+        }
+      }
+    }
+    clusters.push({
+      cells,
+      x: Math.round(minX * sx), y: Math.round(minY * sy),
+      width: Math.round((maxX - minX + 1) * sx), height: Math.round((maxY - minY + 1) * sy),
+    });
+  }
+  clusters.sort((p, q) => q.cells - p.cells);
+  // A cluster inside a larger one's box (the counters of a resized headline) adds nothing.
+  const inside = (p: HotSpot, q: HotSpot) => p.x >= q.x && p.y >= q.y && p.x + p.width <= q.x + q.width && p.y + p.height <= q.y + q.height;
+  const kept: HotSpot[] = [];
+  for (const { cells: _cells, ...spot } of clusters) {
+    if (kept.length === limit) break;
+    if (!kept.some((larger) => inside(spot, larger))) kept.push(spot);
+  }
+  return kept;
+}
+
+/**
+ * @param opts.designWidth, opts.designHeight - The node's size in design px,
+ *   for the grid and the hot-spot boxes (default: the reference image's size).
+ */
 export function compareImages(
   renderPng: Buffer,
   referencePng: Buffer,
-  opts: { targetColor?: string } = {},
+  opts: { targetColor?: string; designWidth?: number; designHeight?: number } = {},
   pre?: ComparisonData
 ): CompareResult {
   // Structural similarity (headline) + per-cell map for localization.
-  const { a, b, GW, GH, mssim, cell } = pre ?? prepareComparison(renderPng, referencePng);
+  const { a, b, GW, GH, width, height, mssim, cell } = pre ?? prepareComparison(renderPng, referencePng, opts);
 
   // Raw grayscale + color diffs (continuity + a chroma signal SSIM ignores).
-  let total = 0, colorTotal = 0;
+  let total = 0, colorTotal = 0, hotCells = 0;
+  const hot = new Uint8Array(GW * GH);
   const regSum = Array.from({ length: 3 }, () => [0, 0, 0]);
   const regCnt = Array.from({ length: 3 }, () => [0, 0, 0]);
   for (let y = 0; y < GH; y++) {
@@ -177,10 +264,14 @@ export function compareImages(
       const cc = Math.min(2, Math.floor((x * 3) / GW));
       const idx = y * GW + x;
       total += Math.abs(a.gray[idx] - b.gray[idx]);
-      colorTotal +=
-        (Math.abs(a.rgb[idx * 3] - b.rgb[idx * 3]) +
-          Math.abs(a.rgb[idx * 3 + 1] - b.rgb[idx * 3 + 1]) +
-          Math.abs(a.rgb[idx * 3 + 2] - b.rgb[idx * 3 + 2])) / 3;
+      const dr = Math.abs(a.rgb[idx * 3] - b.rgb[idx * 3]);
+      const dg = Math.abs(a.rgb[idx * 3 + 1] - b.rgb[idx * 3 + 1]);
+      const db = Math.abs(a.rgb[idx * 3 + 2] - b.rgb[idx * 3 + 2]);
+      colorTotal += (dr + dg + db) / 3;
+      if (1 - cell[idx] > HOT_CELL_MISMATCH || Math.max(dr, dg, db) > HOT_CELL_COLOR_DELTA) {
+        hot[idx] = 1;
+        hotCells++;
+      }
       // Region mismatch from structure: (1 - SSIM), clamped to [0,1].
       regSum[rr][cc] += Math.max(0, 1 - cell[idx]);
       regCnt[rr][cc]++;
@@ -189,6 +280,7 @@ export function compareImages(
   const meanDiff = total / (GW * GH);
   const colorDelta = colorTotal / (GW * GH);
   const regions = regSum.map((row, r) => row.map((s, c) => +((s / regCnt[r][c]) * 100).toFixed(1)));
+  const hotSpots = hotSpotsOf(hot, GW, GH, (opts.designWidth ?? width) / GW, (opts.designHeight ?? height) / GH);
 
   let worst = { row: 0, col: 0, diff: -1, label: "" };
   regions.forEach((row, r) => row.forEach((d, c) => {
@@ -237,6 +329,8 @@ export function compareImages(
     meanDiff: +meanDiff.toFixed(1),
     colorDelta: +colorDelta.toFixed(1),
     regions,
+    mismatchArea: +((hotCells / (GW * GH)) * 100).toFixed(2),
+    hotSpots,
     worstRegion: worst,
     edgeOverflow: +edgeOverflow.toFixed(3),
     colorMatch,
@@ -258,7 +352,7 @@ export function writeDiffHeatmap(
   cellPx = 6,
   pre?: ComparisonData
 ): { width: number; height: number } {
-  const { b, GW, GH, cell } = pre ?? prepareComparison(renderPng, referencePng);
+  const { a, b, GW, GH, cell } = pre ?? prepareComparison(renderPng, referencePng);
 
   const W = GW * cellPx, H = GH * cellPx;
   const out = new PNG({ width: W, height: H });
@@ -266,7 +360,13 @@ export function writeDiffHeatmap(
     for (let gx = 0; gx < GW; gx++) {
       const idx = gy * GW + gx;
       const base = b.gray[idx] * 0.35; // dimmed reference backdrop
-      const mismatch = Math.max(0, Math.min(1, 1 - cell[idx])); // 0 good … 1 bad
+      // 0 good … 1 bad; a color delta of HOT_CELL_COLOR_DELTA shows like a structural mismatch of HOT_CELL_MISMATCH.
+      const color = Math.max(
+        Math.abs(a.rgb[idx * 3] - b.rgb[idx * 3]),
+        Math.abs(a.rgb[idx * 3 + 1] - b.rgb[idx * 3 + 1]),
+        Math.abs(a.rgb[idx * 3 + 2] - b.rgb[idx * 3 + 2])
+      ) * (HOT_CELL_MISMATCH / HOT_CELL_COLOR_DELTA);
+      const mismatch = Math.max(0, Math.min(1, Math.max(1 - cell[idx], color)));
       // Heat ramp: green/blue (low) → red (high). Mix over the dim backdrop.
       const r = base + mismatch * (255 - base);
       const g = base + (1 - mismatch) * (160 - base) * 0.6;

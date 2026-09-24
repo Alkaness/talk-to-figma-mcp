@@ -14,15 +14,15 @@ import os from "os";
  * compare_to_figma turns "does my code look like the design?" into objective
  * numbers: it snapshots a Figma node (via the existing visual-snapshot path) and
  * pixel-diffs it against a screenshot of the implemented UI, reporting a
- * similarity score, a 3×3 region map (to localize mismatches), an overflow
- * estimate, and optional brand-color match. This lets the agent run a real
+ * similarity score, the boxes where the two differ (hot spots), a 3×3 region
+ * map, an overflow estimate, and optional brand-color match. This lets the agent run a real
  * render → compare → fix loop instead of eyeballing downscaled images.
  */
 export function registerVerifyTools(server: McpServer): void {
   server.registerTool(
     "compare_to_figma",
     {
-      description: "Objectively compare your implemented UI against a Figma node. Pass either renderPath (a PNG you captured yourself) or url (a local route — it is screenshotted headlessly at the Figma node's EXACT size, so dimensions always match). Snapshots the node and compares using SSIM (structural similarity — robust to font anti-aliasing, so it reflects real layout/asset drift, not pixel noise), plus a color delta, a 3×3 region map (to localize what's off), an edge-overflow estimate, and an optional brand-color match. Also writes a DIFF HEATMAP png you can open to see exactly where they diverge. Use this to verify a section after building it instead of guessing from a downscaled image.",
+      description: "Objectively compare your implemented UI against a Figma node. Pass either renderPath (a PNG you captured yourself) or url (a local route — it is screenshotted headlessly at the Figma node's EXACT size, so dimensions always match). Snapshots the node and compares using SSIM (structural similarity) on a grid of 4 design px cells, plus a color delta, a 3×3 region map, an edge-overflow estimate, and an optional brand-color match. Lists up to 5 HOT SPOTS: boxes, in design px from the node's top-left and in canvas coordinates, where the render differs; a 2 px drift, a changed color, font or font size shows as one. Also writes a DIFF HEATMAP png you can open to see exactly where they diverge. Use this to verify a section after building it instead of guessing from a downscaled image.",
       inputSchema: {
       renderPath: z.string().optional().describe("Absolute path to a PNG screenshot of your implemented UI. Provide either this or url."),
       url: z.string().optional().describe("Local URL of the implemented UI (e.g. http://localhost:3000/preview/hero). It is captured with a headless browser at the Figma node's exact size — requires Chromium/Chrome installed locally."),
@@ -69,8 +69,11 @@ export function registerVerifyTools(server: McpServer): void {
 
         // Decode + grid + SSIM once; the metrics and the heatmap share it
         // (each used to redo the full pipeline on the same multi-MB buffers).
-        const pre = prepareComparison(renderBuf, refBuf);
-        const r = compareImages(renderBuf, refBuf, { targetColor }, pre);
+        // The PNG covers the node's bounding box, which is larger than the node when it is rotated.
+        const box = typed.absoluteBoundingBox;
+        const design = { designWidth: box?.width ?? typed.width, designHeight: box?.height ?? typed.height };
+        const pre = prepareComparison(renderBuf, refBuf, design);
+        const r = compareImages(renderBuf, refBuf, { targetColor, ...design }, pre);
 
         // Write a diff heatmap the agent can open and inspect visually.
         const outPath =
@@ -78,7 +81,9 @@ export function registerVerifyTools(server: McpServer): void {
           path.join(os.tmpdir(), `figma-diff-${(typed.nodeId || "node").replace(/[^a-z0-9]+/gi, "-")}-${Date.now()}.png`);
         let heatNote = "";
         try {
-          const dim = writeDiffHeatmap(renderBuf, refBuf, outPath, 6, pre);
+          // At most about 2400 px on the longer side.
+          const cellPx = Math.max(1, Math.min(6, Math.floor(2400 / Math.max(pre.GW, pre.GH))));
+          const dim = writeDiffHeatmap(renderBuf, refBuf, outPath, cellPx, pre);
           r.diffImagePath = outPath;
           heatNote = `Diff heatmap (red = mismatch): ${outPath}  (${dim.width}×${dim.height})`;
         } catch (e) {
@@ -93,6 +98,16 @@ export function registerVerifyTools(server: McpServer): void {
           ...(captureNote ? [captureNote] : []),
           `Structural similarity (SSIM): ${r.similarity}%   |   raw-pixel similarity: ${r.pixelSimilarity}%`,
           `Color delta: ${r.colorDelta}/255 mean per-channel   |   grayscale diff: ${r.meanDiff}/255`,
+          `Differing area: ${r.mismatchArea}% of the node, in cells of ${Math.round((design.designWidth / pre.GW) * 10) / 10} design px`,
+          ...(r.hotSpots.length > 0
+            ? [
+                "Hot spots, largest first (design px from the node's top-left; canvas position):",
+                ...r.hotSpots.map((spot, i) =>
+                  `  ${i + 1}. x=${spot.x}, y=${spot.y}, ${spot.width}×${spot.height}` +
+                  (box ? ` (canvas ${Math.round(box.x + spot.x)}, ${Math.round(box.y + spot.y)})` : "")
+                ),
+              ]
+            : ["Hot spots: none"]),
           `Worst region: ${r.worstRegion.label} (structural mismatch ${r.worstRegion.diff}/100)`,
           `Region mismatch map (3×3, 0=match … 100=worst):`,
           grid,
@@ -105,11 +120,17 @@ export function registerVerifyTools(server: McpServer): void {
         }
         lines.push(heatNote);
 
-        // Verdict heuristics (SSIM-calibrated). SSIM is stricter than raw-pixel
-        // similarity, so the thresholds are lower than the old metric's.
+        // Verdict heuristics. The mean SSIM hardly moves for small drift (a
+        // headline moved by 8 px still scored 95%), so a close match also
+        // needs no hot spots (see HOT_CELL_COLOR_DELTA in image-compare.ts).
         const verdicts: string[] = [];
-        if (r.similarity >= 80) verdicts.push("Close structural match.");
-        else if (r.similarity >= 60) verdicts.push("Roughly right — inspect the worst region and the diff heatmap.");
+        if (r.similarity >= 80 && r.hotSpots.length === 0) verdicts.push("Close match: no area differs beyond rendering noise.");
+        else if (r.similarity >= 80) {
+          verdicts.push(
+            `Close overall, but ${r.hotSpots.length === 5 ? "5 or more areas differ" : `${r.hotSpots.length} area(s) differ`}: ` +
+            "check the hot spots, largest first. Small spots on text can also come from browser text rendering."
+          );
+        } else if (r.similarity >= 60) verdicts.push("Roughly right — inspect the worst region and the diff heatmap.");
         else verdicts.push("Significant mismatch — inspect layout/assets in the worst region (see heatmap).");
         if (r.colorDelta > 24) verdicts.push("Colors differ noticeably — check fills/backgrounds.");
         if (r.edgeOverflow > 0.04) verdicts.push("Content is overflowing the frame edges.");

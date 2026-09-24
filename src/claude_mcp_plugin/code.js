@@ -1339,7 +1339,7 @@ async function exportNodeAsImage(params) {
  * placement drift and verifying layout/padding.
  */
 async function getVisualSnapshot(params) {
-  const { nodeId, scale = 2, maxDimension = 2000 } = params || {};
+  const { nodeId, scale = 2, maxDimension = 2000, region } = params || {};
 
   // Resolve the target node: explicit nodeId wins, otherwise use the selection.
   let node;
@@ -1363,11 +1363,27 @@ async function getVisualSnapshot(params) {
     throw new Error(`Node "${node.name}" (${node.type}) does not support visual export.`);
   }
 
+  // A region of the node is exported through a temporary slice over that
+  // part of the canvas; it is clipped to the node's bounding box.
+  const box = node.absoluteBoundingBox || null;
+  let area = null;
+  if (region) {
+    if (!box) throw new Error(`Node "${node.name}" (${node.type}) has no bounding box, so a region cannot be exported`);
+    const x = Math.max(0, region.x);
+    const y = Math.max(0, region.y);
+    const width = Math.min(region.x + region.width, box.width) - x;
+    const height = Math.min(region.y + region.height, box.height) - y;
+    if (!(width > 0 && height > 0)) {
+      throw new Error(`The region lies outside the node, whose box is ${Math.round(box.width)}x${Math.round(box.height)}`);
+    }
+    area = { x, y, width, height };
+  }
+
   // Cap the longest output dimension. Very tall/wide frames (e.g. a 10000px
   // brochure) blow past the export timeout at 2x AND exceed the resolution the
   // model can actually use. Clamp the effective scale so the longest side stays
   // within maxDimension; normal-sized selections still render at the full scale.
-  const longest = Math.max(node.width || 1, node.height || 1);
+  const longest = area ? Math.max(area.width, area.height) : Math.max(node.width || 1, node.height || 1);
   let effectiveScale = scale;
   let capped = false;
   if (maxDimension && longest * effectiveScale > maxDimension) {
@@ -1376,7 +1392,17 @@ async function getVisualSnapshot(params) {
   }
 
   const startTime = Date.now();
+  let slice = null;
   try {
+    let target = node;
+    if (area) {
+      slice = figma.createSlice();
+      pageOf(node).appendChild(slice);
+      slice.x = box.x + area.x;
+      slice.y = box.y + area.y;
+      slice.resize(area.width, area.height);
+      target = slice;
+    }
     let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
       timeoutId = setTimeout(() => {
@@ -1385,14 +1411,13 @@ async function getVisualSnapshot(params) {
     });
 
     const bytes = await Promise.race([
-      node.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: effectiveScale } }),
+      target.exportAsync({ format: "PNG", constraint: { type: "SCALE", value: effectiveScale } }),
       timeoutPromise,
     ]).finally(() => clearTimeout(timeoutId));
 
     console.log(`[getVisualSnapshot] Exported "${node.name}" in ${Date.now() - startTime}ms, ${bytes.length} bytes @${effectiveScale.toFixed(3)}x (requested ${scale}x, capped=${capped})`);
 
-    const box = node.absoluteBoundingBox || null;
-    return {
+    const result = {
       nodeId: node.id,
       name: node.name,
       type: node.type,
@@ -1407,8 +1432,12 @@ async function getVisualSnapshot(params) {
       absoluteBoundingBox: box ? { x: box.x, y: box.y, width: box.width, height: box.height } : null,
       selectionCount,
     };
+    if (area) result.region = area;
+    return result;
   } catch (error) {
     throw new Error(`Error capturing visual snapshot: ${error.message}`);
+  } finally {
+    if (slice) slice.remove();
   }
 }
 
@@ -1539,30 +1568,36 @@ async function getCSS(params) {
     throw new Error(`Node "${node.name}" (${node.type}) does not support getCSSAsync in this Figma build.`);
   }
 
-  async function cssFor(n) {
+  // depth is the level below the requested node; text nodes add their text.
+  async function cssFor(n, depth) {
     let css = {};
     try { css = await n.getCSSAsync(); } catch (e) { css = { error: e.message }; }
-    return { id: n.id, name: n.name, type: n.type, css };
+    const entry = { id: n.id, name: n.name, type: n.type, css, depth };
+    if (n.type === "TEXT") entry.characters = n.characters;
+    return entry;
   }
 
   if (!recursive) {
-    return await cssFor(node);
+    return await cssFor(node, 0);
   }
 
   const nodes = [];
   let truncated = false;
-  async function walk(n) {
+  let hidden = 0;
+  async function walk(n, depth) {
     if (nodes.length >= maxNodes) { truncated = true; return; }
-    if (typeof n.getCSSAsync === "function") nodes.push(await cssFor(n));
+    if (typeof n.getCSSAsync === "function") nodes.push(await cssFor(n, depth));
     if ("children" in n) {
       for (const child of n.children) {
+        // Hidden layers are not rendered, so they have no CSS to copy.
+        if (child.visible === false) { hidden++; continue; }
         if (nodes.length >= maxNodes) { truncated = true; break; }
-        await walk(child);
+        await walk(child, depth + 1);
       }
     }
   }
-  await walk(node);
-  return { root: node.id, count: nodes.length, truncated, nodes };
+  await walk(node, 0);
+  return { root: node.id, count: nodes.length, truncated, hidden, nodes };
 }
 
 /**
@@ -3440,22 +3475,37 @@ async function setTextAlign(params) {
   }
 }
 
+const STYLED_SEGMENT_PROPERTIES = [
+  "fillStyleId", "fontName", "fontSize", "textCase",
+  "textDecoration", "textStyleId", "fills", "letterSpacing",
+  "lineHeight", "fontWeight"
+];
+
+// A segment's value of one property, in a form that survives postMessage.
+function styledSegmentValue(segment, property) {
+  const value = segment[property];
+  if (property === "fontName") {
+    return value && typeof value === "object" ? { family: value.family || "", style: value.style || "" } : { family: "", style: "" };
+  }
+  if (property === "letterSpacing" || property === "lineHeight") {
+    return value && typeof value === "object" ? { value: value.value || 0, unit: value.unit || "PIXELS" } : { value: 0, unit: "PIXELS" };
+  }
+  if (property === "fills") return value ? JSON.parse(JSON.stringify(value)) : [];
+  return value;
+}
+
+// One segment per range of characters in which every requested property is
+// the same. `properties` takes several at once; older servers send `property`.
 async function getStyledTextSegments(params) {
   const { nodeId, property } = params || {};
-  if (!nodeId || !property) {
+  let properties = property ? [property] : [];
+  if (params && Array.isArray(params.properties) && params.properties.length > 0) properties = params.properties;
+  if (!nodeId || properties.length === 0) {
     throw new Error("Missing nodeId or property");
   }
-
-  // Valid properties: "fillStyleId", "fontName", "fontSize", "textCase", 
-  // "textDecoration", "textStyleId", "fills", "letterSpacing", "lineHeight", "fontWeight"
-  const validProperties = [
-    "fillStyleId", "fontName", "fontSize", "textCase",
-    "textDecoration", "textStyleId", "fills", "letterSpacing",
-    "lineHeight", "fontWeight"
-  ];
-
-  if (!validProperties.includes(property)) {
-    throw new Error(`Invalid property. Must be one of: ${validProperties.join(", ")}`);
+  const invalid = properties.filter((name) => STYLED_SEGMENT_PROPERTIES.indexOf(name) === -1);
+  if (invalid.length > 0) {
+    throw new Error(`Invalid property ${invalid.join(", ")}. Must be one of: ${STYLED_SEGMENT_PROPERTIES.join(", ")}`);
   }
 
   const node = await getNodeByIdSafe(nodeId);
@@ -3468,53 +3518,12 @@ async function getStyledTextSegments(params) {
   }
 
   try {
-    const segments = node.getStyledTextSegments([property]);
-
-    // Prepare segments data in a format safe for serialization
-    const safeSegments = segments.map(segment => {
-      const safeSegment = {
-        characters: segment.characters,
-        start: segment.start,
-        end: segment.end
-      };
-
-      // Handle different property types for safe serialization
-      if (property === "fontName") {
-        if (segment[property] && typeof segment[property] === "object") {
-          safeSegment[property] = {
-            family: segment[property].family || "",
-            style: segment[property].style || ""
-          };
-        } else {
-          safeSegment[property] = { family: "", style: "" };
-        }
-      } else if (property === "letterSpacing" || property === "lineHeight") {
-        // Handle spacing properties which have a value and unit
-        if (segment[property] && typeof segment[property] === "object") {
-          safeSegment[property] = {
-            value: segment[property].value || 0,
-            unit: segment[property].unit || "PIXELS"
-          };
-        } else {
-          safeSegment[property] = { value: 0, unit: "PIXELS" };
-        }
-      } else if (property === "fills") {
-        // Handle fills which can be complex
-        safeSegment[property] = segment[property] ? JSON.parse(JSON.stringify(segment[property])) : [];
-      } else {
-        // Handle simple properties
-        safeSegment[property] = segment[property];
-      }
-
+    const segments = node.getStyledTextSegments(properties).map((segment) => {
+      const safeSegment = { characters: segment.characters, start: segment.start, end: segment.end };
+      for (const name of properties) safeSegment[name] = styledSegmentValue(segment, name);
       return safeSegment;
     });
-
-    return {
-      id: node.id,
-      name: node.name,
-      property: property,
-      segments: safeSegments
-    };
+    return { id: node.id, name: node.name, property: properties[0], properties, segments };
   } catch (error) {
     throw new Error(`Error getting styled text segments: ${error.message}`);
   }
@@ -6904,7 +6913,7 @@ const NODE_SPEC_PROPS = {
     "fills", "strokes", "strokeWeight", "strokeAlign", "dashPattern",
     "strokeTopWeight", "strokeRightWeight", "strokeBottomWeight", "strokeLeftWeight",
     "cornerRadius", "topLeftRadius", "topRightRadius", "bottomRightRadius", "bottomLeftRadius",
-    "cornerSmoothing", "effects", "opacity", "blendMode", "isMask", "clipsContent", "visible",
+    "cornerSmoothing", "effects", "opacity", "blendMode", "isMask", "locked", "clipsContent", "visible",
   ]),
   layout: new Set([
     "layoutMode", "layoutWrap", "itemSpacing", "counterAxisSpacing",

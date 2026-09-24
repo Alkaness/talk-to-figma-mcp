@@ -85,6 +85,22 @@ describe('get_visual_snapshot', () => {
     });
     const res = await call('get_visual_snapshot', {});
     expect(firstText(res)).toMatch(/auto-reduced from 2x/);
+    expect(firstText(res)).toContain('pass region { x, y, width, height } with sides up to 1000 px, for example { x: 0, y: 0, width: 1000, height: 1000 }');
+  });
+
+  it('passes a region and reports it, or notes that an older plugin ignored it', async () => {
+    const snapshot = {
+      nodeId: '1:2', name: 'Long', type: 'FRAME', mimeType: 'image/png', imageData: 'QQ==',
+      scale: 2, requestedScale: 2, capped: false, width: 1440, height: 10000, absoluteBoundingBox: null, selectionCount: 1,
+    };
+    const region = { x: 0, y: 1200, width: 900, height: 600 };
+    mockSend.mockResolvedValueOnce({ ...snapshot, region });
+    const res = await call('get_visual_snapshot', { nodeId: '1:2', region: JSON.stringify(region) });
+    expect(mockSend).toHaveBeenCalledWith('get_visual_snapshot', { nodeId: '1:2', scale: 2, maxDimension: 2000, region }, expect.any(Number));
+    expect(firstText(res)).toContain('Region: x=0, y=1200, 900×600 px of the node');
+
+    mockSend.mockResolvedValueOnce(snapshot);
+    expect(firstText(await call('get_visual_snapshot', { nodeId: '1:2', region }))).toContain('region was ignored');
   });
 });
 
@@ -111,6 +127,21 @@ describe('get_css', () => {
     expect(text).toContain('"Root"');
     expect(text).toContain('"Child"');
     expect(text).toContain('color: #fff;');
+  });
+  it('indents by depth, quotes text, counts hidden layers and passes maxNodes', async () => {
+    mockSend.mockResolvedValueOnce({
+      root: '1:2', count: 2, truncated: true, hidden: 3,
+      nodes: [
+        { id: '1:2', name: 'Root', type: 'FRAME', css: { width: '10px' }, depth: 0 },
+        { id: '1:3', name: 'Label', type: 'TEXT', css: { color: '#fff' }, depth: 1, characters: 'a */ b' },
+      ],
+    });
+    const res = await call('get_css', { nodeId: '1:2', recursive: true, maxNodes: 2 });
+    expect(mockSend).toHaveBeenCalledWith('get_css', { nodeId: '1:2', recursive: true, maxNodes: 2 }, expect.any(Number));
+    const text = firstText(res);
+    expect(text).toContain('  /* "Label" (TEXT, 1:3) */\n  /* text: "a * / b" */\n    color: #fff;');
+    expect(text).toContain('/* 3 hidden layer(s) skipped */');
+    expect(text).toContain('raise maxNodes');
   });
 });
 
