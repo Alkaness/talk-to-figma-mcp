@@ -3177,7 +3177,8 @@ async function setFontWeight(params) {
     throw new Error("Missing nodeId or weight");
   }
 
-  // Map weight to font style
+  // Inter's style name for a weight. The MCP server passes `style`, resolved
+  // against the family's own styles; batch_operations may not.
   const getFontStyle = (weight) => {
     switch (weight) {
       case 100: return "Thin";
@@ -3208,8 +3209,18 @@ async function setFontWeight(params) {
     const currentFont = node.fontName === figma.mixed
       ? node.getRangeFontName(0, 1)
       : node.fontName;
-    const family = currentFont.family;
-    const style = getFontStyle(weight);
+    // The server passes the family it resolved `style` for.
+    const family = params.style && params.family ? params.family : currentFont.family;
+    let style = params.style;
+    if (!style) {
+      // Families spell styles differently ("Semi Bold", "SemiBold"): match
+      // Inter's name against this family's styles, ignoring spaces and case.
+      style = getFontStyle(weight);
+      const squash = (name) => name.toLowerCase().replace(/[\s_-]+/g, "");
+      const entry = (await loadAvailableFontIndex(false)).get(family.toLowerCase());
+      const match = entry ? entry.styles.filter((s) => squash(s) === squash(style))[0] : undefined;
+      if (match) style = match;
+    }
     await figma.loadFontAsync({ family, style });
     node.fontName = { family, style };
     return {

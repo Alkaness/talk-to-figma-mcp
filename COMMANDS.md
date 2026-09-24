@@ -125,7 +125,7 @@ All creation tools require `parentId`. See section 18.
 | `set_multiple_text_contents` | Replaces the text of several text nodes in one call. |
 | `set_font_name` | Sets font family and style. |
 | `set_font_size` | Sets font size. |
-| `set_font_weight` | Sets font weight. |
+| `set_font_weight` | Sets the font weight, resolved to the style name of the node's own family (Inter "Semi Bold", Poppins "SemiBold"). When the family has no style of that weight, the closest one is used and named. Italic is kept. |
 | `set_letter_spacing` | Sets letter spacing. |
 | `set_line_height` | Sets line height. |
 | `set_paragraph_spacing` | Sets paragraph spacing. |

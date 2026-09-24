@@ -417,6 +417,24 @@ function weightRank(wanted: number, candidate: number): number {
 const squash = (style: string) => style.toLowerCase().replace(/[\s_-]+/g, "");
 
 /**
+ * The style of a family that is closest to a weight and slant, by CSS font
+ * matching: "SemiBold" for Poppins 600, "Semi Bold" for Inter 600. `exact`
+ * is false when the family has no style of that weight and slant. Returns
+ * null when no style name has a known weight.
+ */
+export function pickFontStyle(styles: string[], weight: number, italic: boolean): { style: string; exact: boolean } | null {
+  const candidates = styles
+    .map((style) => ({ style, info: parseFontStyle(style) }))
+    .filter((c): c is { style: string; info: NonNullable<ReturnType<typeof parseFontStyle>> } => c.info !== null);
+  if (candidates.length === 0) return null;
+  const sameSlant = candidates.filter((c) => c.info.italic === italic);
+  const pool = sameSlant.length > 0 ? sameSlant : candidates;
+  pool.sort((a, b) => weightRank(weight, a.info.weight) - weightRank(weight, b.info.weight) || Number(b.info.plain) - Number(a.info.plain));
+  const best = pool[0];
+  return { style: best.style, exact: best.info.weight === weight && best.info.italic === italic };
+}
+
+/**
  * Pick the style for a family. An explicit fontStyle must exist (spacing and
  * case may differ: "Semi Bold" finds "SemiBold"). Otherwise the style closest
  * to fontWeight and italic is used, with a warning when it is not exact.
@@ -442,20 +460,14 @@ function resolveFont(
   } else {
     const weight = wanted.fontWeight ?? 400;
     const italic = wanted.italic ?? false;
-    const candidates = entry.styles
-      .map((s) => ({ style: s, info: parseFontStyle(s) }))
-      .filter((c): c is { style: string; info: NonNullable<ReturnType<typeof parseFontStyle>> } => c.info !== null);
-    if (candidates.length === 0) {
+    const picked = pickFontStyle(entry.styles, weight, italic);
+    if (!picked) {
       throw specError(where, `the weights of ${entry.family}'s styles are unknown (${entry.styles.join(", ")}); pass style.fontStyle`);
     }
-    const sameSlant = candidates.filter((c) => c.info.italic === italic);
-    const pool = sameSlant.length > 0 ? sameSlant : candidates;
-    pool.sort((a, b) => weightRank(weight, a.info.weight) - weightRank(weight, b.info.weight) || Number(b.info.plain) - Number(a.info.plain));
-    const best = pool[0];
-    if (best.info.weight !== weight || best.info.italic !== italic) {
-      ctx.warnings.push(`${where}: ${entry.family} has no weight ${weight}${italic ? " italic" : ""} style; used "${best.style}"`);
+    if (!picked.exact) {
+      ctx.warnings.push(`${where}: ${entry.family} has no weight ${weight}${italic ? " italic" : ""} style; used "${picked.style}"`);
     }
-    style = best.style;
+    style = picked.style;
   }
   const font = { family: entry.family, style };
   ctx.fonts.set(`${font.family}\u0000${font.style}`, font);

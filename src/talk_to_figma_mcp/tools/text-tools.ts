@@ -3,6 +3,33 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceJson } from "../utils/schema-helpers";
 import { parseCommandResult } from "../utils/command-results";
+import { filterFigmaNode } from "../utils/figma-helpers";
+import { pickFontStyle } from "../utils/node-spec";
+import { NO_FONTS_MESSAGE } from "./node-tree-tools";
+
+/**
+ * The style name for a weight in the text node's own family, resolved the way
+ * create_node_tree resolves fontWeight (pickFontStyle in utils/node-spec.ts).
+ * Italic text stays italic.
+ */
+async function fontStyleForWeight(nodeId: string, weight: number): Promise<{ family: string; style: string; note: string }> {
+  const node = filterFigmaNode(await sendCommandToFigma("get_node_info", { nodeId, depth: 0 }), 0);
+  if (node.type !== "TEXT") throw new Error(`Node is not a text node: ${nodeId}`);
+  const family: string | undefined = node.style?.fontFamily;
+  if (!family) throw new Error(`the font family of node ${nodeId} is unknown`);
+  const italic = node.style?.italic === true;
+  const lookup = parseCommandResult(
+    "get_available_fonts",
+    await sendCommandToFigma("get_available_fonts", { families: [family] }, 60000)
+  );
+  if (lookup.fontCount === 0) throw new Error(NO_FONTS_MESSAGE);
+  const entry = lookup.fonts[family];
+  if (!entry) throw new Error(`font family "${family}" is not available in Figma. Install the font, then restart Figma`);
+  const picked = pickFontStyle(entry.styles, weight, italic);
+  if (!picked) throw new Error(`the weights of ${entry.family}'s styles are unknown (${entry.styles.join(", ")}); use set_font_name`);
+  const note = picked.exact ? "" : `. ${entry.family} has no weight ${weight}${italic ? " italic" : ""} style; used "${picked.style}"`;
+  return { family: entry.family, style: picked.style, note };
+}
 
 /**
  * Register text-related tools to the MCP server
@@ -236,24 +263,24 @@ export function registerTextTools(server: McpServer): void {
   server.registerTool(
     "set_font_weight",
     {
-      description: "Set the font weight of a text node in Figma",
+      description:
+        "Set the font weight of a text node in Figma. The weight is resolved to the node's own font family's style name " +
+        "(Inter \"Semi Bold\", Poppins \"SemiBold\"); when the family has no style of that weight, the closest one is used and named. Italic is kept.",
       inputSchema: {
       nodeId: z.string().describe("The ID of the text node to modify"),
-      weight: z.coerce.number().describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
+      weight: z.coerce.number().min(1).max(1000).describe("Font weight (100, 200, 300, 400, 500, 600, 700, 800, 900)"),
     },
     },
     async ({ nodeId, weight }) => {
       try {
-        const result = await sendCommandToFigma("set_font_weight", {
-          nodeId,
-          weight
-        });
+        const { family, style, note } = await fontStyleForWeight(nodeId, weight);
+        const result = await sendCommandToFigma("set_font_weight", { nodeId, weight, family, style });
         const typedResult = result as { name: string, fontName: { family: string, style: string }, weight: number };
         return {
           content: [
             {
               type: "text",
-              text: `Updated font weight of node "${typedResult.name}" to ${typedResult.weight} (${typedResult.fontName.style})`
+              text: `Updated font weight of node "${typedResult.name}" to ${typedResult.weight} (${typedResult.fontName.family} ${typedResult.fontName.style})${note}`
             }
           ]
         };

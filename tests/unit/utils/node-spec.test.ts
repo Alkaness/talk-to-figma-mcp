@@ -19,6 +19,7 @@ import {
   parseFontStyle,
   parseNodeSpec,
   parseNodeUpdates,
+  pickFontStyle,
   rotatedBoxOffset,
 } from '../../../src/talk_to_figma_mcp/utils/node-spec';
 import { DESIGN_STRATEGY_EXAMPLE } from '../../../src/talk_to_figma_mcp/prompts/index';
@@ -247,6 +248,14 @@ describe('fonts', () => {
     expect(textStyle({ fontFamily: 'Poppins', fontWeight: 600 }).font).toEqual({ family: 'Poppins', style: 'SemiBold' });
     expect(textStyle({ fontFamily: 'Poppins', fontWeight: 600, italic: true }).font).toEqual({ family: 'Poppins', style: 'SemiBold Italic' });
     expect(textStyle({}).font).toEqual({ family: 'Inter', style: 'Regular' });
+  });
+
+  it('picks the style closest to a weight and slant', () => {
+    expect(pickFontStyle(POPPINS.styles, 600, false)).toEqual({ style: 'SemiBold', exact: true });
+    expect(pickFontStyle(INTER.styles, 600, false)).toEqual({ style: 'Semi Bold', exact: true });
+    expect(pickFontStyle(POPPINS.styles, 700, true)).toEqual({ style: 'SemiBold Italic', exact: false });
+    expect(pickFontStyle(POPPINS.styles, 900, false)).toEqual({ style: 'Bold', exact: false });
+    expect(pickFontStyle(['Display', 'Text'], 400, false)).toBeNull();
   });
 
   it('uses the closest weight with a warning when the exact one is missing', () => {

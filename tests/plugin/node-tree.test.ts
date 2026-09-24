@@ -377,6 +377,20 @@ describe('other commands in the plugin', () => {
     expect(result.results.map((entry: any) => entry.id)).toEqual(ids);
   });
 
+  it("set_font_weight uses the style the server resolved, else matches Inter's name to the family's", async () => {
+    const plugin = loadPlugin();
+    const text = plugin.figma.add('TEXT', plugin.page, {}, '8:3');
+    text.store.chars = 'Hi';
+    text.store.fonts = [{ family: 'Poppins', style: 'Regular' }, { family: 'Poppins', style: 'Regular' }];
+
+    // batch_operations sends no style: Inter's "Semi Bold" is found as Poppins "SemiBold".
+    await plugin.run('set_font_weight', { nodeId: '8:3', weight: 600 });
+    expect(text.fontName).toEqual({ family: 'Poppins', style: 'SemiBold' });
+
+    await plugin.run('set_font_weight', { nodeId: '8:3', weight: 500, family: 'Poppins', style: 'Medium' });
+    expect(text.fontName).toEqual({ family: 'Poppins', style: 'Medium' });
+  });
+
   it('get_available_fonts lists styles, and similar families for a missing one', async () => {
     const plugin = loadPlugin();
 
