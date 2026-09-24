@@ -10,7 +10,9 @@ import vm from 'vm';
 import { FakeFigma, FakeFigmaOptions, FakeNode, FontName } from './fake-figma';
 import { filterFigmaNode } from '../../src/talk_to_figma_mcp/utils/figma-helpers';
 import {
+  NodeFontRun,
   fontFamiliesOf,
+  needsNodeFonts,
   normalizeNodeTree,
   normalizeNodeUpdates,
   parseNodeSpec,
@@ -59,12 +61,28 @@ function loadPlugin(options: FakeFigmaOptions = {}): Plugin {
     },
     async updateNodes(updates) {
       const parsed = parseNodeUpdates(updates);
-      const lookup = await run('get_available_fonts', { families: fontFamiliesOf(parsed, 'update') });
-      const normalized = normalizeNodeUpdates(parsed, lookup.fonts, lookup.suggestions);
+      // The tool reads these with get_node_info; here they come from the fake's store.
+      const nodeFonts: Record<string, NodeFontRun[]> = {};
+      for (const update of parsed.filter(needsNodeFonts)) {
+        const text = figma.nodes.get(update.nodeId);
+        if (text?.type === 'TEXT') nodeFonts[update.nodeId] = fontRunsOf(text.store.fonts);
+      }
+      const lookup = await run('get_available_fonts', { families: fontFamiliesOf(parsed, 'update', nodeFonts) });
+      const normalized = normalizeNodeUpdates(parsed, lookup.fonts, lookup.suggestions, nodeFonts);
       const result = await run('update_nodes', { updates: normalized.updates, fonts: normalized.fonts });
       return { ...result, warnings: [...normalized.warnings, ...result.warnings] };
     },
   };
+}
+
+function fontRunsOf(fonts: FontName[]): NodeFontRun[] {
+  const runs: NodeFontRun[] = [];
+  fonts.forEach((font, i) => {
+    const last = runs[runs.length - 1];
+    if (last && last.family === font.family && last.style === font.style) last.end = i + 1;
+    else runs.push({ start: i, end: i + 1, ...font });
+  });
+  return runs;
 }
 
 const node = (plugin: Plugin, id: string | null | undefined) => plugin.figma.nodes.get(id as string) as any;
@@ -277,13 +295,15 @@ describe('create_node_tree in the plugin', () => {
         { type: 'DROP_SHADOW', color: '#0000001A', offset: { x: 0, y: 2 }, radius: 4 },
         { type: 'INNER_SHADOW', color: '#000', radius: 1 },
         { type: 'LAYER_BLUR', radius: 2 },
+        { type: 'NOISE', noiseType: 'MONOTONE', noiseSize: 0.5, density: 1, color: '#00000040' },
+        { type: 'GLASS', lightIntensity: 0.5, lightAngle: -45, refraction: 0.8, depth: 20, dispersion: 0.5, radius: 4 },
       ],
       children: [
         { type: 'RECTANGLE', layoutSizingHorizontal: 'FILL', layoutSizingVertical: 'FIXED', minWidth: 10, maxWidth: 300, minHeight: 5, maxHeight: 50 },
         { type: 'RECTANGLE', layoutGrow: 1, layoutAlign: 'STRETCH' },
         { type: 'ELLIPSE', layoutPositioning: 'ABSOLUTE', x: 5, y: 5, constraints: { horizontal: 'SCALE', vertical: 'CENTER' }, rotation: 15 },
         {
-          type: 'TEXT', characters: 'Hello world',
+          type: 'TEXT', characters: 'Hello world', fills: ['#333333'],
           style: {
             fontFamily: 'Poppins', fontWeight: 500, fontSize: 14, lineHeightPx: 20, letterSpacing: 0.5, textCase: 'TITLE',
             textDecoration: 'UNDERLINE', textAlignHorizontal: 'CENTER', textAlignVertical: 'CENTER', paragraphSpacing: 4,
@@ -335,6 +355,19 @@ describe('update_nodes in the plugin', () => {
     expect(text.width).toBe(300);
     expect(text.getRangeFontName(0, 5)).toEqual({ family: 'Poppins', style: 'Bold' });
     expect(text.getRangeFontName(5, 11)).toEqual({ family: 'Poppins', style: 'SemiBold' });
+  });
+
+  it('keeps each run\'s weight when only the family changes, and the family when only a weight does', async () => {
+    const plugin = loadPlugin();
+    const { text } = textInStack(plugin);
+
+    const result = await plugin.updateNodes([{ nodeId: '8:1', style: { fontFamily: 'Poppins' } }]);
+    expect(result.warnings).toEqual([]);
+    expect(text.getRangeFontName(0, 6)).toEqual({ family: 'Poppins', style: 'Regular' });
+    expect(text.getRangeFontName(6, 11)).toEqual({ family: 'Poppins', style: 'Bold' });
+
+    await plugin.updateNodes([{ nodeId: '8:1', textRuns: [{ start: 0, end: 5, fontWeight: 600 }] }]);
+    expect(text.getRangeFontName(0, 5)).toEqual({ family: 'Poppins', style: 'SemiBold' });
   });
 
   it('loads the fonts a text already uses before changing its characters', async () => {
@@ -401,5 +434,83 @@ describe('other commands in the plugin', () => {
       suggestions: { Robto: ['Roboto'] },
       fontCount: 4,
     });
+  });
+});
+
+describe('the fake Figma', () => {
+  // Measured in Figma on 2026-09-24: a text child of a fixed 400x300 auto-layout frame
+  // (the same for HORIZONTAL and VERTICAL), textAutoResize and then both sizing
+  // modes (horizontal first), or the other way round. Read back: horizontal,
+  // vertical, textAutoResize. TRUNCATE is left out: Figma turns it into a truncation.
+  const MEASURED = `
+    auto-first HUG HUG NONE => HUG HUG WIDTH_AND_HEIGHT
+    auto-first HUG HUG HEIGHT => HUG HUG WIDTH_AND_HEIGHT
+    auto-first HUG HUG WIDTH_AND_HEIGHT => HUG HUG WIDTH_AND_HEIGHT
+    auto-first HUG FILL NONE => FIXED FILL NONE
+    auto-first HUG FILL HEIGHT => FIXED FILL NONE
+    auto-first HUG FILL WIDTH_AND_HEIGHT => FIXED FILL NONE
+    auto-first HUG FIXED NONE => FIXED FIXED NONE
+    auto-first HUG FIXED HEIGHT => FIXED FIXED NONE
+    auto-first HUG FIXED WIDTH_AND_HEIGHT => FIXED FIXED NONE
+    auto-first FILL HUG NONE => FILL HUG HEIGHT
+    auto-first FILL HUG HEIGHT => FILL HUG HEIGHT
+    auto-first FILL HUG WIDTH_AND_HEIGHT => FILL HUG HEIGHT
+    auto-first FILL FILL NONE => FILL FILL NONE
+    auto-first FILL FILL HEIGHT => FILL FILL NONE
+    auto-first FILL FILL WIDTH_AND_HEIGHT => FILL FILL NONE
+    auto-first FILL FIXED NONE => FILL FIXED NONE
+    auto-first FILL FIXED HEIGHT => FILL FIXED NONE
+    auto-first FILL FIXED WIDTH_AND_HEIGHT => FILL FIXED NONE
+    auto-first FIXED HUG NONE => FIXED HUG HEIGHT
+    auto-first FIXED HUG HEIGHT => FIXED HUG HEIGHT
+    auto-first FIXED HUG WIDTH_AND_HEIGHT => FIXED HUG HEIGHT
+    auto-first FIXED FILL NONE => FIXED FILL NONE
+    auto-first FIXED FILL HEIGHT => FIXED FILL NONE
+    auto-first FIXED FILL WIDTH_AND_HEIGHT => FIXED FILL NONE
+    auto-first FIXED FIXED NONE => FIXED FIXED NONE
+    auto-first FIXED FIXED HEIGHT => FIXED FIXED NONE
+    auto-first FIXED FIXED WIDTH_AND_HEIGHT => FIXED FIXED NONE
+    sizing-first HUG HUG NONE => FIXED FIXED NONE
+    sizing-first HUG HUG HEIGHT => FIXED HUG HEIGHT
+    sizing-first HUG HUG WIDTH_AND_HEIGHT => HUG HUG WIDTH_AND_HEIGHT
+    sizing-first HUG FILL NONE => FIXED FILL NONE
+    sizing-first HUG FILL HEIGHT => FIXED FILL NONE
+    sizing-first HUG FILL WIDTH_AND_HEIGHT => FIXED FILL NONE
+    sizing-first HUG FIXED NONE => FIXED FIXED NONE
+    sizing-first HUG FIXED HEIGHT => FIXED HUG HEIGHT
+    sizing-first HUG FIXED WIDTH_AND_HEIGHT => HUG HUG WIDTH_AND_HEIGHT
+    sizing-first FILL HUG NONE => FILL FIXED NONE
+    sizing-first FILL HUG HEIGHT => FILL HUG HEIGHT
+    sizing-first FILL HUG WIDTH_AND_HEIGHT => FILL HUG HEIGHT
+    sizing-first FILL FILL NONE => FILL FILL NONE
+    sizing-first FILL FILL HEIGHT => FILL FILL NONE
+    sizing-first FILL FILL WIDTH_AND_HEIGHT => FILL FILL NONE
+    sizing-first FILL FIXED NONE => FILL FIXED NONE
+    sizing-first FILL FIXED HEIGHT => FILL HUG HEIGHT
+    sizing-first FILL FIXED WIDTH_AND_HEIGHT => FILL HUG HEIGHT
+    sizing-first FIXED HUG NONE => FIXED FIXED NONE
+    sizing-first FIXED HUG HEIGHT => FIXED HUG HEIGHT
+    sizing-first FIXED HUG WIDTH_AND_HEIGHT => HUG HUG WIDTH_AND_HEIGHT
+    sizing-first FIXED FILL NONE => FIXED FILL NONE
+    sizing-first FIXED FILL HEIGHT => FIXED FILL NONE
+    sizing-first FIXED FILL WIDTH_AND_HEIGHT => FIXED FILL NONE
+    sizing-first FIXED FIXED NONE => FIXED FIXED NONE
+    sizing-first FIXED FIXED HEIGHT => FIXED HUG HEIGHT
+    sizing-first FIXED FIXED WIDTH_AND_HEIGHT => HUG HUG WIDTH_AND_HEIGHT`
+    .trim().split('\n').map((line) => line.trim());
+
+  it('sizes text in auto-layout the way Figma does', () => {
+    const figma = new FakeFigma({ fonts: FONTS });
+    figma.loadedFonts.add(`Inter\u0000Regular`);
+    const actual = MEASURED.map((line) => {
+      const [order, horizontal, vertical, autoResize] = line.split(' ');
+      const frame = figma.add('FRAME', figma.currentPage, { layoutMode: 'VERTICAL', primaryAxisSizingMode: 'FIXED' });
+      frame.resize(400, 300);
+      const text = figma.add('TEXT', frame, { characters: 'Hello world, sizing matrix', textAutoResize: 'NONE' });
+      const setSizing = () => { text.layoutSizingHorizontal = horizontal; text.layoutSizingVertical = vertical; };
+      if (order === 'auto-first') { text.textAutoResize = autoResize; setSizing(); } else { setSizing(); text.textAutoResize = autoResize; }
+      return `${order} ${horizontal} ${vertical} ${autoResize} => ${text.layoutSizingHorizontal} ${text.layoutSizingVertical} ${text.textAutoResize}`;
+    });
+    expect(actual).toEqual(MEASURED);
   });
 });

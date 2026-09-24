@@ -1,7 +1,7 @@
 /**
  * Runtime validation for plugin command results (the MCP ⇄ plugin boundary).
  *
- * The plugin is updated by manually re-importing code.js into Figma, so version
+ * Figma loads a new code.js only when the plugin is run again, so version
  * skew between server and plugin is common in the wild. Without validation that
  * skew surfaces as `Cannot read properties of undefined` stringified into a tool
  * error; with it, the agent gets an actionable "plugin may be outdated" message.
@@ -223,7 +223,7 @@ export function parseCommandResult<C extends ValidatedCommand>(
     throw new Error(
       `Unexpected response shape from the Figma plugin for "${command}"${where}: ` +
       `${issue?.message ?? "validation failed"}. The plugin may be outdated — ` +
-      `re-import the plugin (src/claude_mcp_plugin/manifest.json) in Figma to update it.`
+      `close the plugin in Figma and run it again (Plugins > Development) to load the new code.js.`
     );
   }
   return parsed.data as CommandResult<C>;

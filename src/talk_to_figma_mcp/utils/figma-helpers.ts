@@ -186,7 +186,7 @@ function compactEffects(effects: unknown): Record<string, any>[] {
         if (key === "visible" || key === "boundVariables") continue;
         if (key === "blendMode" && value === "NORMAL") continue;
         if ((key === "spread" && value === 0) || (key === "showShadowBehindNode" && value === false)) continue;
-        out[key] = key === "color" ? rgbaToHex(value) : roundDeep(value);
+        out[key] = key === "color" || key === "secondaryColor" ? rgbaToHex(value) : roundDeep(value);
       }
       return out;
     });
@@ -263,11 +263,14 @@ function buildTextRuns(characters: unknown, overrides: unknown, table: unknown):
  *   parent gets `_childrenTruncated: true`.
  * - `rotation` is in degrees, counterclockwise, as the Plugin API reports it.
  *   The REST format stores radians with the opposite sign: the plugin
- *   replaces the value before export (annotateRotation in code.js), and
+ *   replaces the value before export (annotateFromPlugin in code.js), and
  *   rest_get_file converts it with restRotationToDegrees.
  * - A rotated node also gets `width` and `height` before rotation, from the
  *   REST `size` field, which the plugin adds. Without them the size must be
  *   derived from the rotated box, which fails near 45 degrees.
+ * - NOISE, TEXTURE and GLASS effects are the Plugin API's own objects: the
+ *   plugin puts them into the export, because JSON_REST_V1 leaves out their
+ *   settings (GLASS exports as its type alone).
  *
  * @param node - The node in REST format
  * @param maxDepth - Child levels returned in full detail (default: all)

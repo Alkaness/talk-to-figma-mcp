@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > Development > Import plugin from manifest**, then select `src/claude_mcp_plugin/manifest.json`.
+The plugin changed in this release. Close it in Figma and run it again from **Menu > Plugins > Development**; Figma then loads the new `code.js`.
 
 ### Added
 - **`create_node_tree` and `update_nodes` write in the format that `get_node_info` reads.** An agent that had read a design could not write it back. No tool set FILL or HUG sizing, absolute positioning, constraints, stroke alignment or mixed-style text. `create_text` used only Inter. Colors were read as hex but written as 0-1 floats in three different shapes. Rebuilding one card took about 22 sequential calls, and the result was still wrong.
@@ -27,6 +27,10 @@ The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > De
   4. Figma's defaults for new nodes differed from what an omitted field means in `get_node_info` output. New auto-layout frames included strokes in the layout, new drop shadows were shown behind the node, and the counter axis of a new auto-layout frame stayed fixed. These values are now set explicitly. An omitted sizing mode hugs, unless `layoutSizing*` or a width or height says otherwise.
   5. Clones were resized to the size they already had, which turned a 0 px wide vector into 0.01 px.
   6. When Figma listed no fonts, text failed with `font family "Inter" is not available in Figma`. The error now says that Figma lists no fonts (seen with figma-linux), and an unknown family names up to 5 similarly spelled families.
+- **`create_node_tree` and `update_nodes` were tested with text in Figma, and these problems were fixed.** The tests rebuilt a 738-node section with 64 text nodes and 69 nodes with effects, and ran 144 combinations of text sizing modes.
+  1. Node fills were applied after the text runs and replaced their colors: words set in orange in the original came out in the text's base color. Node properties are now applied before the text.
+  2. `update_nodes` set every run to one font when only `fontFamily` changed, so semibold words became regular. A `fontWeight` in a style or run without `fontFamily` failed. The server now reads the node's fonts with `get_node_info`, as `set_font_weight` does. A family alone keeps each run's weight and slant, and a weight alone keeps each run's family.
+  3. NOISE, TEXTURE and GLASS effects were skipped with a warning. They are now passed through, and `get_node_info` reads their settings from the plugin, because Figma's JSON export gives GLASS as its type alone. All 69 effects of the section were rebuilt unchanged.
 - **Image contrast in `get_node_info` output was 0.3 times the value Figma uses.** The REST format scales contrast by 0.3 (0.9 exports as 0.27); the other six filters are unscaled. The value is now converted, so it matches `set_image_filters` and `create_node_tree`.
 - **`set_font_weight` failed for families that spell style names differently from Inter.** It mapped weights to Inter's names, so 600 asked Poppins, Montserrat or Open Sans for "Semi Bold", while they have "SemiBold". It now resolves the weight against the node's own family, the way `create_node_tree` does, and keeps italic. When the family has no style of that weight, it uses the closest one and names it. Through `batch_operations`, which bypasses the server, the plugin matches Inter's name to the family's style while ignoring spaces and case.
 - **`rest_get_file` reported rotation in radians with the opposite sign.** It now reports degrees, as `get_node_info` does.
@@ -53,11 +57,13 @@ The plugin changed in this release. Re-import it in Figma: **Menu > Plugins > De
 ### Changed
 - The `export-to-tailwind` and `read_design_strategy` prompts and the `get_node_info`, `get_nodes_info`, `get_css` and `rest_get_file` descriptions now describe the fields above.
 - `get_node_info` and `get_nodes_info` report `rotation` in degrees, counterclockwise, taken from the Plugin API; the REST format stores radians with the opposite sign (30 degrees exports as -0.5236). A rotated node also reports its `width` and `height` before rotation, which its bounding box does not show. This needs the updated plugin.
+- Messages about an outdated plugin now say to close the plugin and run it again, which loads the new `code.js`; importing the manifest again is not needed. [TROUBLESHOOTING.md, section 3.7](TROUBLESHOOTING.md#37-the-figma-plugin-is-older-than-this-server-or-unexpected-response-shape-from-the-figma-plugin) is corrected.
+- The `rest_get_file` description and [TROUBLESHOOTING.md, section 3.8](TROUBLESHOOTING.md#38-rotated-near-45-degrees-so-its-size-was-taken-from-the-bounding-box) state that the REST API gives no size before rotation (only with `geometry=paths`), so a node rotated within 2.9 degrees of 45 or 135 degrees gets its bounding box as its size.
 - `batch_operations` returns the ID of each node its operations created. Its description states that its params use the plugin's own shape.
 - The `design_strategy` prompt now teaches auto-layout with FILL and HUG sizing, one `create_node_tree` call, and one visual check at the end. It no longer teaches x/y placement with a `get_node_info` call after every creation. The server instructions point to the new tools.
 
 ### Tests
-- **The plugin code now has automated tests.** `tests/plugin/node-tree.test.ts` runs `code.js` in a `vm` context against a fake Plugin API (`tests/plugin/fake-figma.ts`), with specs from the server's real normalizer. The fake enforces the rules the build order depends on and lays out auto-layout frames. 15 cases cover the pricing card round trip, the `design_strategy` example, placement after HUG growth, groups, rotated groups, clones, failure cleanup, `update_nodes`, `batch_operations`, `set_font_weight` and `get_available_fonts`. Each of 9 deliberate breakages of the build order or of the fixes above makes at least one case fail.
+- **The plugin code now has automated tests.** `tests/plugin/node-tree.test.ts` runs `code.js` in a `vm` context against a fake Plugin API (`tests/plugin/fake-figma.ts`), with specs from the server's real normalizer. The fake enforces the rules the build order depends on and lays out auto-layout frames. 17 cases cover the pricing card round trip, the `design_strategy` example, placement after HUG growth, groups, rotated groups, clones, failure cleanup, `update_nodes`, `batch_operations`, `set_font_weight` and `get_available_fonts`. One case replays 54 combinations of text sizing modes and `textAutoResize` that were measured in Figma. Each of 9 deliberate breakages of the build order or of the fixes above makes at least one case fail.
 - `tests/plugin/syntax.test.ts` keeps `code.js` free of `?.`, `??`, object spread and `Promise.allSettled`.
 
 ## [1.5.0] - 2026-09-23

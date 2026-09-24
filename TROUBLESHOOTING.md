@@ -124,11 +124,23 @@ The same cause also produces "Figma plugin disconnected before the command could
 2. In figma-linux, check the font directories in its settings, or try another build of the client.
 3. Tools that do not create or edit text keep working.
 
+Later the same day, the same client listed 2,189 families to the plugin, and every text check passed.
+
 ### 3.7 "The Figma plugin is older than this server" or "Unexpected response shape from the Figma plugin"
 
-**Cause:** the server sent a command that the plugin does not know, or the plugin returned a result in an older format. Figma keeps running the plugin code it imported until the plugin is imported again.
+**Cause:** the server sent a command that the plugin does not know, or the plugin returned a result in an older format. A running plugin keeps the `code.js` it was started with. Figma reads `code.js` from the project folder each time the development plugin starts; this was confirmed on 2026-09-24, when running the plugin again loaded a changed `code.js` without a new import.
 
-**Resolution:** in Figma Desktop, open **Menu > Plugins > Development > Import plugin from manifest**, select `src/claude_mcp_plugin/manifest.json` from the updated project folder, and run the plugin again.
+**Resolution:**
+
+1. Close the plugin in Figma.
+2. Run it again from **Menu > Plugins > Development**.
+3. If the plugin was imported from a different folder than the updated project, import `src/claude_mcp_plugin/manifest.json` from the updated folder once (**Menu > Plugins > Development > Import plugin from manifest**).
+
+### 3.8 "rotated near 45 degrees, so its size was taken from the bounding box"
+
+**Cause:** the spec gives a rotated node without `width` and `height`, so its size before rotation is derived from its bounding box. Within 2.9 degrees of 45 and 135 degrees the box does not determine the size. `get_node_info` reports `width` and `height` for rotated nodes; `rest_get_file` cannot, because the REST API sends them only with `geometry=paths`, which also returns every vector path.
+
+**Resolution:** read the node with `get_node_info` instead of `rest_get_file`, or add `width` and `height` to the spec.
 
 ## 4. REST API errors
 

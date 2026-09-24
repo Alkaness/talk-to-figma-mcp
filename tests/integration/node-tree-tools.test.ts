@@ -145,7 +145,7 @@ describe('create_node_tree', () => {
     const result = await call('create_node_tree', { parentId: '0:1', tree: { type: 'TEXT', characters: 'a' } });
 
     expect(result.isError).toBe(true);
-    expect(textOf(result)).toContain('re-import the plugin (src/claude_mcp_plugin/manifest.json)');
+    expect(textOf(result)).toContain('run it again (Plugins > Development) to load the new code.js');
   });
 
   it('is an error when the root itself cannot be built', async () => {
@@ -160,6 +160,7 @@ describe('create_node_tree', () => {
 describe('update_nodes', () => {
   it('sends normalized updates and lists failures and warnings', async () => {
     mockSend
+      .mockResolvedValueOnce({ id: '1:2', name: 'Label', type: 'TEXT', characters: 'Hi', style: { fontFamily: 'Inter', fontStyle: 'Regular', fontWeight: 400 } })
       .mockResolvedValueOnce({ fonts: { Inter: INTER } })
       .mockResolvedValueOnce({
         total: 2, succeeded: 1, failed: 1,
@@ -174,9 +175,11 @@ describe('update_nodes', () => {
       ],
     });
 
-    expect(mockSend).toHaveBeenNthCalledWith(1, 'get_available_fonts', { families: ['Inter'] }, expect.any(Number));
+    // Only the node whose font changes is read.
+    expect(mockSend).toHaveBeenNthCalledWith(1, 'get_node_info', { nodeId: '1:2', depth: 0 });
+    expect(mockSend).toHaveBeenNthCalledWith(2, 'get_available_fonts', { families: ['Inter'] }, expect.any(Number));
     expect(mockSend).toHaveBeenNthCalledWith(
-      2,
+      3,
       'update_nodes',
       {
         updates: [
@@ -203,6 +206,39 @@ describe('update_nodes', () => {
         '  - updates[0] (node 1:2): layoutSizingHorizontal not set: FILL can only be set on children of auto-layout frames',
       ].join('\n')
     );
+  });
+
+  it("keeps a mixed text's fonts for what an update leaves out", async () => {
+    const POPPINS = { family: 'Poppins', styles: ['Regular', 'Medium', 'SemiBold', 'Bold'] };
+    mockSend
+      .mockResolvedValueOnce({
+        id: '1:2', name: 'Hello', type: 'TEXT', characters: 'Hello world',
+        style: { fontFamily: 'Poppins', fontStyle: 'Regular', fontWeight: 400 },
+        characterStyleOverrides: [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1],
+        styleOverrideTable: { 1: { fontFamily: 'Poppins', fontStyle: 'Bold', fontWeight: 700 } },
+      })
+      .mockResolvedValueOnce({ fonts: { Inter: INTER, Poppins: POPPINS }, fontCount: 30 })
+      .mockResolvedValueOnce({ total: 2, succeeded: 2, failed: 0, results: [], warnings: [] });
+
+    await call('update_nodes', {
+      updates: [
+        // A family alone keeps "world" bold.
+        { nodeId: '1:2', style: { fontFamily: 'Inter' } },
+        // A weight without a family uses the node's family.
+        { nodeId: '1:2', textRuns: [{ start: 0, end: 5, fontWeight: 600 }] },
+      ],
+    });
+
+    expect(mockSend).toHaveBeenCalledTimes(3);
+    expect(mockSend.mock.calls[1][1].families.sort()).toEqual(['Inter', 'Poppins']);
+    const [first, second] = mockSend.mock.calls[2][1].updates;
+    expect(first.spec.text).toEqual({
+      fontName: { family: 'Inter', style: 'Regular' },
+      ranges: [{ start: 6, end: 11, fontName: { family: 'Inter', style: 'Bold' }, props: {} }],
+    });
+    expect(second.spec.text).toEqual({
+      ranges: [{ start: 0, end: 5, fontName: { family: 'Poppins', style: 'SemiBold' }, props: {} }],
+    });
   });
 
   it('is an error when no update succeeded', async () => {

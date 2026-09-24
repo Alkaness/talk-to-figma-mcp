@@ -60,16 +60,20 @@ const paintSchema = z.preprocess(
   paintObject
 );
 
-const effectSchema = z.object({
-  type: z.string(),
-  color: colorSchema.optional(),
-  offset: vector.optional(),
-  radius: length.optional(),
-  spread: z.number().optional(),
-  visible: z.boolean().optional(),
-  blendMode: blendMode.optional(),
-  showShadowBehindNode: z.boolean().optional(),
-});
+// NOISE, TEXTURE and GLASS keep their other settings (noiseSize, refraction, ...) as they are.
+const effectSchema = z
+  .object({
+    type: z.string(),
+    color: colorSchema.optional(),
+    secondaryColor: colorSchema.optional(),
+    offset: vector.optional(),
+    radius: length.optional(),
+    spread: z.number().optional(),
+    visible: z.boolean().optional(),
+    blendMode: blendMode.optional(),
+    showShadowBehindNode: z.boolean().optional(),
+  })
+  .passthrough();
 type EffectInput = z.infer<typeof effectSchema>;
 
 const hyperlinkSchema = z.object({
@@ -270,6 +274,14 @@ export type FontCatalog = Record<string, { family: string; styles: string[] } | 
 /** Similarly named families for each family Figma does not have. */
 export type FontSuggestions = Record<string, string[]>;
 
+/** Characters start to end of an existing text node use this font. */
+export interface NodeFontRun {
+  start: number;
+  end: number;
+  family: string;
+  style: string;
+}
+
 const NATIVE_TYPES = ["FRAME", "COMPONENT", "RECTANGLE", "ELLIPSE", "LINE", "TEXT"] as const;
 type NativeType = (typeof NATIVE_TYPES)[number];
 
@@ -326,6 +338,8 @@ interface Context {
   fonts: Map<string, FontName>;
   warnings: string[];
   keys: Set<string>;
+  /** update_nodes: the fonts of the text node being updated, when known. */
+  nodeFonts?: NodeFontRun[];
 }
 
 /** Figma's default font, used for text that names no family. */
@@ -414,6 +428,8 @@ function weightRank(wanted: number, candidate: number): number {
   return candidate > wanted ? candidate - wanted : 1000 + wanted - candidate;
 }
 
+const fontKey = (font: FontName) => `${font.family}\u0000${font.style}`;
+
 const squash = (style: string) => style.toLowerCase().replace(/[\s_-]+/g, "");
 
 /**
@@ -470,7 +486,7 @@ function resolveFont(
     style = picked.style;
   }
   const font = { family: entry.family, style };
-  ctx.fonts.set(`${font.family}\u0000${font.style}`, font);
+  ctx.fonts.set(fontKey(font), font);
   return font;
 }
 
@@ -478,19 +494,55 @@ function resolveFont(
  * The font families a spec uses, to look up with get_available_fonts before
  * normalizing. Text that names no family uses Inter, Figma's default.
  */
-export function fontFamiliesOf(specs: Array<NodeSpec | NodeUpdate>, mode: Mode): string[] {
+export function fontFamiliesOf(
+  specs: Array<NodeSpec | NodeUpdate>,
+  mode: Mode,
+  nodeFonts: Record<string, NodeFontRun[]> = {}
+): string[] {
   const families = new Set<string>();
-  const visit = (spec: NodeFields & { children?: unknown }) => {
+  const visit = (spec: NodeFields & { children?: unknown; nodeId?: string }) => {
     const isText = mode === "update" || (spec.type ?? "").toUpperCase() === "TEXT";
     if (isText && (mode === "create" || spec.style !== undefined || spec.textRuns !== undefined)) {
       const family = spec.style?.fontFamily ?? (mode === "create" ? DEFAULT_FONT_FAMILY : undefined);
       if (family) families.add(family);
       for (const run of spec.textRuns ?? []) if (run.fontFamily) families.add(run.fontFamily);
+      for (const run of (spec.nodeId && nodeFonts[spec.nodeId]) || []) families.add(run.family);
     }
     if (mode === "create" && Array.isArray(spec.children)) (spec.children as NodeSpec[]).forEach(visit);
   };
   specs.forEach(visit);
   return [...families];
+}
+
+const FONT_FIELDS = ["fontFamily", "fontStyle", "fontWeight", "italic"] as const;
+const hasFontField = (style: Partial<Record<(typeof FONT_FIELDS)[number], unknown>> | undefined) =>
+  !!style && FONT_FIELDS.some((key) => style[key] !== undefined);
+
+/** Whether an update changes fonts, so the node's current fonts fill in what it leaves out. */
+export function needsNodeFonts(update: NodeUpdate): boolean {
+  return hasFontField(update.style) || (update.textRuns ?? []).some(hasFontField);
+}
+
+/**
+ * The font runs of a text node from its get_node_info result: the base style
+ * with the textRuns that override the font. Empty for other nodes.
+ */
+export function nodeFontRunsOf(node: any): NodeFontRun[] {
+  const base = node?.type === "TEXT" && node.style?.fontFamily && node.style.fontStyle
+    ? { family: node.style.fontFamily as string, style: node.style.fontStyle as string }
+    : null;
+  if (!base) return [];
+  const length = typeof node.characters === "string" ? node.characters.length : 0;
+  const out: NodeFontRun[] = [];
+  let cursor = 0;
+  for (const run of Array.isArray(node.textRuns) ? node.textRuns : []) {
+    if (run.fontFamily === undefined && run.fontStyle === undefined) continue;
+    if (run.start > cursor) out.push({ start: cursor, end: run.start, ...base });
+    out.push({ start: run.start, end: run.end, family: run.fontFamily ?? base.family, style: run.fontStyle ?? base.style });
+    cursor = run.end;
+  }
+  if (cursor < length || out.length === 0) out.push({ start: cursor, end: Math.max(length, cursor), ...base });
+  return out;
 }
 
 // ─── Paints and effects ────────────────────────────────────────────────────
@@ -614,6 +666,17 @@ function effectsOf(effects: EffectInput[], where: string, ctx: Context): Record<
       case "BACKGROUND_BLUR":
         out.push({ type: effect.type, radius: effect.radius ?? 0, visible: effect.visible ?? true });
         break;
+      case "NOISE":
+      case "TEXTURE":
+      case "GLASS": {
+        // get_node_info reads these from the Plugin API, so their fields are the plugin's.
+        const { color, secondaryColor, ...rest } = effect;
+        const passed: Record<string, unknown> = { ...rest, visible: effect.visible ?? true };
+        if (color !== undefined) passed.color = toRgba(color, at);
+        if (secondaryColor !== undefined) passed.secondaryColor = toRgba(secondaryColor, at);
+        out.push(passed);
+        break;
+      }
       default:
         ctx.warnings.push(`${at}: ${effect.type} effects are not supported; the effect was skipped`);
     }
@@ -667,16 +730,21 @@ function textPropsOf(style: TextStyleInput, where: string): Record<string, unkno
   return nonEmpty(out);
 }
 
+/** The font a run starts from: what it leaves out comes from here. */
+type BaseFont = { family?: string; weight?: number; italic?: boolean };
+
+function baseFontOf(font: FontName): BaseFont {
+  const parsed = parseFontStyle(font.style);
+  return { family: font.family, weight: parsed?.weight, italic: parsed?.italic };
+}
+
 function rangesOf(
   spec: NodeFields,
-  baseFamily: string | undefined,
-  baseFont: FontName | undefined,
+  baseAt: (start: number) => BaseFont,
   label: string,
   ctx: Context
 ): PluginTextRange[] {
-  const style = spec.style ?? {};
   const characters = spec.characters;
-  const baseWeight = style.fontWeight ?? (baseFont ? parseFontStyle(baseFont.style)?.weight : undefined);
   const ranges: PluginTextRange[] = [];
   let cursor = 0;
 
@@ -702,12 +770,13 @@ function rangesOf(
     cursor = end;
 
     const range: PluginTextRange = { start, end, props: {} };
-    if (run.fontFamily !== undefined || run.fontStyle !== undefined || run.fontWeight !== undefined || run.italic !== undefined) {
-      const family = run.fontFamily ?? baseFamily;
+    if (hasFontField(run)) {
+      const base = baseAt(start);
+      const family = run.fontFamily ?? base.family;
       if (!family) throw specError(where, "pass fontFamily: the node's font family is not given in style");
       range.fontName = resolveFont(
         family,
-        { fontStyle: run.fontStyle, fontWeight: run.fontWeight ?? baseWeight, italic: run.italic ?? style.italic },
+        { fontStyle: run.fontStyle, fontWeight: run.fontWeight ?? base.weight, italic: run.italic ?? base.italic },
         where,
         ctx
       );
@@ -741,8 +810,22 @@ function textOf(
   const style = spec.style ?? {};
   const text: PluginTextSpec = {};
   const family = style.fontFamily ?? (creating ? DEFAULT_FONT_FAMILY : undefined);
+  // update_nodes: the node's fonts, after new characters if there are any (they take the first character's font).
+  let current = creating ? [] : ctx.nodeFonts ?? [];
+  if (spec.characters !== undefined && current.length > 0) current = [{ ...current[0], start: 0, end: spec.characters.length }];
+  let fontRuns: Array<NodeFontRun & { font: FontName }> = current.map((run) => ({ ...run, font: { family: run.family, style: run.style } }));
 
-  if (creating || style.fontFamily !== undefined || style.fontStyle !== undefined || style.fontWeight !== undefined || style.italic !== undefined) {
+  if (!creating && hasFontField(style) && current.length > 0) {
+    // Each run keeps its own family, weight and slant unless the style gives them.
+    fontRuns = current.map((run) => {
+      const own = baseFontOf(run);
+      const wanted = style.fontStyle !== undefined
+        ? { fontStyle: style.fontStyle }
+        : { fontWeight: style.fontWeight ?? own.weight, italic: style.italic ?? own.italic };
+      return { ...run, font: resolveFont(style.fontFamily ?? run.family, wanted, label, ctx) };
+    });
+    text.fontName = fontRuns[0].font;
+  } else if (creating || hasFontField(style)) {
     if (!family) throw specError(label, "pass style.fontFamily together with fontStyle, fontWeight or italic");
     text.fontName = resolveFont(family, { fontStyle: style.fontStyle, fontWeight: style.fontWeight, italic: style.italic }, label, ctx);
   }
@@ -758,7 +841,20 @@ function textOf(
   }
   if (autoResize) text.autoResize = autoResize;
 
-  const ranges = rangesOf(spec, family, text.fontName, label, ctx);
+  const ranges: PluginTextRange[] = [];
+  if (text.fontName && fontRuns.length > 0) {
+    // fontName sets the whole text; the runs whose font differs follow.
+    for (const run of fontRuns.slice(1)) {
+      if (fontKey(run.font) !== fontKey(fontRuns[0].font)) ranges.push({ start: run.start, end: run.end, fontName: run.font, props: {} });
+    }
+  }
+  const baseAt = (start: number): BaseFont => {
+    const run = fontRuns.find((r) => start >= r.start && start < r.end) ?? fontRuns[0];
+    if (run) return baseFontOf(run.font);
+    const base: BaseFont = text.fontName ? baseFontOf(text.fontName) : { family };
+    return { family: base.family, weight: style.fontWeight ?? base.weight, italic: style.italic ?? base.italic };
+  };
+  ranges.push(...rangesOf(spec, baseAt, label, ctx));
   if (ranges.length > 0) text.ranges = ranges;
   if (spec.lineTypes !== undefined || spec.lineIndentations !== undefined) {
     ctx.warnings.push(`${label}: list formatting (lineTypes, lineIndentations) is not applied`);
@@ -1137,11 +1233,13 @@ export function normalizeNodeTree(
 export function normalizeNodeUpdates(
   updates: NodeUpdate[],
   catalog: FontCatalog,
-  suggestions: FontSuggestions = {}
+  suggestions: FontSuggestions = {},
+  nodeFonts: Record<string, NodeFontRun[]> = {}
 ): { updates: Array<{ nodeId: string; spec: PluginNodeSpec }>; fonts: FontName[]; warnings: string[] } {
   const ctx = newContext("update", catalog, suggestions);
   const out = updates.map((update, i) => {
     const label = `updates[${i}] (node ${update.nodeId})`;
+    ctx.nodeFonts = nodeFonts[update.nodeId];
     if (update.children !== undefined) {
       throw specError(label, "update_nodes changes a node's own properties. To add children, call create_node_tree with this node as parentId");
     }
@@ -1151,5 +1249,6 @@ export function normalizeNodeUpdates(
     if (Object.keys(node).length === 0) ctx.warnings.push(`${label}: nothing to change`);
     return { nodeId: update.nodeId, spec: { label, ...node } };
   });
-  return { updates: out, fonts: [...ctx.fonts.values()], warnings: ctx.warnings };
+  // A family change resolves each font run, and a missing weight would be reported per run.
+  return { updates: out, fonts: [...ctx.fonts.values()], warnings: [...new Set(ctx.warnings)] };
 }

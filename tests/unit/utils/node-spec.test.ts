@@ -417,6 +417,19 @@ describe('create defaults and layout rules', () => {
     expect(shadow({ showShadowBehindNode: true }).showShadowBehindNode).toBe(true);
   });
 
+  it('passes NOISE, TEXTURE and GLASS effects back in the form the plugin read them', () => {
+    // node.effects as the plugin puts them into get_node_info.
+    const effects = [
+      { type: 'NOISE', noiseType: 'DUOTONE', noiseSize: 0.5, density: 1, color: { r: 0, g: 0, b: 0, a: 0.25 }, secondaryColor: { r: 1, g: 0.4, b: 0, a: 0.1 }, visible: true },
+      { type: 'TEXTURE', noiseSize: 2, radius: 4, clipToShape: true, visible: true },
+      { type: 'GLASS', lightIntensity: 0.5, lightAngle: -45, refraction: 0.8, depth: 20, dispersion: 0.5, splay: 0, radius: 4, visible: true },
+    ];
+    const read = filterFigmaNode({ id: '1:1', name: 'Glass', type: 'RECTANGLE', effects }, 0);
+    const written = (build(read).tree as any).props.effects;
+    const hex = (c: { r: number; g: number; b: number; a: number }) => hexToRgba(rgbaToHex(c));
+    expect(written).toEqual([{ ...effects[0], color: hex(effects[0].color as any), secondaryColor: hex(effects[0].secondaryColor as any) }, effects[1], effects[2]]);
+  });
+
   it('finds where the box of a rotated node starts', () => {
     expect(rotatedBoxOffset(100, 40, 30)).toEqual({ x: 0, y: -50 });
     expect(rotatedBoxOffset(80, 30, -45)).toEqual({ x: -21.21, y: 0 });

@@ -442,12 +442,19 @@ function pruneNodeDocToDepth(doc, depth, currentDepth = 0) {
   return doc;
 }
 
+// Effects whose settings JSON_REST_V1 exports in full.
+const REST_EFFECT_TYPES = new Set(["DROP_SHADOW", "INNER_SHADOW", "LAYER_BLUR", "BACKGROUND_BLUR"]);
+
+// Correct JSON_REST_V1 with Plugin API values that create_node_tree takes.
 // The REST format stores `rotation` in radians with the opposite sign (30
-// degrees exports as -0.5236). Replace it with the Plugin API value, in
-// degrees, which rotate_node and create_node_tree take. Children are matched
-// by id, down to the depth that is returned.
-function annotateRotation(doc, node, depth) {
+// degrees exports as -0.5236); it is replaced with degrees. GLASS exports as
+// its type alone, so newer effects are replaced with the node's own. Children
+// are matched by id, down to the depth that is returned.
+function annotateFromPlugin(doc, node, depth) {
   if (!doc || !node) return;
+  if ("effects" in node && Array.isArray(node.effects) && node.effects.some((e) => !REST_EFFECT_TYPES.has(e.type))) {
+    doc.effects = JSON.parse(JSON.stringify(node.effects));
+  }
   if ("rotation" in node) {
     if (node.rotation) {
       doc.rotation = node.rotation;
@@ -461,7 +468,7 @@ function annotateRotation(doc, node, depth) {
   if (depth <= 0 || !Array.isArray(doc.children) || !("children" in node)) return;
   const byId = new Map();
   for (const child of node.children) byId.set(child.id, child);
-  for (const childDoc of doc.children) annotateRotation(childDoc, byId.get(childDoc.id), depth - 1);
+  for (const childDoc of doc.children) annotateFromPlugin(childDoc, byId.get(childDoc.id), depth - 1);
 }
 
 async function getNodeInfo(nodeId, depth) {
@@ -484,7 +491,7 @@ async function getNodeInfo(nodeId, depth) {
   }
 
   const limited = typeof depth === "number" && depth >= 0;
-  annotateRotation(response.document, node, limited ? depth : Infinity);
+  annotateFromPlugin(response.document, node, limited ? depth : Infinity);
 
   // Depth pushdown: older servers omit depth (undefined) and get the full tree.
   if (limited) {
@@ -524,7 +531,7 @@ async function getNodesInfo(nodeIds, depth) {
             };
           }
           const limited = typeof depth === "number" && depth >= 0;
-          annotateRotation(doc, node, limited ? depth : Infinity);
+          annotateFromPlugin(doc, node, limited ? depth : Infinity);
           if (limited) {
             pruneNodeDocToDepth(doc, depth);
           }
@@ -7156,6 +7163,8 @@ async function applyNodeSpec(node, spec, placement, ctx) {
   const label = spec.label;
   if (ctx.mode === "update" && node.type === "TEXT") await loadNodeFonts(node);
   if (spec.name !== undefined) node.name = spec.name;
+  // Before the text: node fills replace the fills of every character, run fills included.
+  setNodeProps(node, spec.props, NODE_SPEC_PROPS.props, ctx, label);
   if (spec.text) {
     if (node.type === "TEXT") applyTextSpec(node, spec.text, ctx, label);
     else ctx.warnings.push(`${label}: characters, style and textRuns apply only to TEXT nodes; skipped`);
@@ -7164,7 +7173,6 @@ async function applyNodeSpec(node, spec, placement, ctx) {
   if (spec.text && spec.text.autoResize && node.type === "TEXT") {
     setNodeProp(node, "textAutoResize", spec.text.autoResize, ctx, label);
   }
-  setNodeProps(node, spec.props, NODE_SPEC_PROPS.props, ctx, label);
   setNodeProps(node, spec.layout, NODE_SPEC_PROPS.layout, ctx, label);
   if (placement) insertIntoParent(placement.parent, node, placement.index);
   setNodeProps(node, spec.childProps, NODE_SPEC_PROPS.childProps, ctx, label);

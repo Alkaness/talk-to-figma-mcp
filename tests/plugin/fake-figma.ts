@@ -168,10 +168,19 @@ export class FakeNode {
     }
 
     if (type === "TEXT") {
+      // Node fills replace the fills of every character, so earlier run fills are lost.
+      s.fills = (this as any).fills;
+      accessor(this, "fills", () => s.fills, (v: unknown) => {
+        s.fills = v;
+        this.rangeCalls = this.rangeCalls.filter((call) => call[0] !== "setRangeFills");
+      });
       accessor(this, "fontName", () => this.fontNameOf(), (v: FontName) => this.setFontName(v));
       accessor(this, "characters", () => s.chars, (v: string) => this.setCharacters(v));
       accessor(this, "textAutoResize", () => s.autoResize, (v: string) => {
         this.requireFonts("textAutoResize");
+        // FILL wins: a vertical FILL keeps the height fixed, a horizontal FILL the width.
+        if (s.sizing.v === "FILL" && v !== "TRUNCATE") v = "NONE";
+        else if (s.sizing.h === "FILL" && v === "WIDTH_AND_HEIGHT") v = "HEIGHT";
         s.autoResize = v;
         this.reflow();
       });

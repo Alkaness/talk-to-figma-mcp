@@ -3,10 +3,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { sendCommandToFigma } from "../utils/websocket";
 import { coerceJson } from "../utils/schema-helpers";
 import { parseCommandResult } from "../utils/command-results";
+import { filterFigmaNode } from "../utils/figma-helpers";
 import {
   FontCatalog,
   FontSuggestions,
+  NodeFontRun,
+  NodeUpdate,
   fontFamiliesOf,
+  needsNodeFonts,
+  nodeFontRunsOf,
   normalizeNodeTree,
   normalizeNodeUpdates,
   parseNodeSpec,
@@ -45,8 +50,9 @@ const UPDATE_NODES_DESCRIPTION =
   "create_node_tree except type and children; only the fields given change, and a get_node_info result without its " +
   "children can be passed as it is. Use it for what the single-property tools cannot set: FILL and HUG sizing, absolute " +
   "positioning, constraints, stroke alignment, per-corner radii, fonts by family and weight, and mixed-style text runs. " +
-  "width and height resize; absoluteBoundingBox, localPosition and parentOffset are read-only and ignored. Changing " +
-  "fontStyle, fontWeight or italic needs fontFamily in the same style.";
+  "width and height resize; absoluteBoundingBox, localPosition and parentOffset are read-only and ignored. Font fields " +
+  "that a style or run leaves out keep the text's current ones: fontWeight alone keeps the family, and fontFamily alone " +
+  "keeps each run's weight and slant.";
 
 export const NO_FONTS_MESSAGE =
   "Figma lists no fonts at all (figma.listAvailableFontsAsync() is empty), so no text can be created or changed. " +
@@ -61,10 +67,27 @@ async function fontCatalogFor(families: string[]): Promise<{ catalog: FontCatalo
   return { catalog: result.fonts, suggestions: result.suggestions ?? {} };
 }
 
+/**
+ * The current fonts of the text nodes whose fonts an update changes, so a
+ * weight without a family keeps the node's family and a family change keeps
+ * each run's weight. A node that cannot be read is left to update_nodes to report.
+ */
+async function nodeFontsFor(updates: NodeUpdate[]): Promise<Record<string, NodeFontRun[]>> {
+  const ids = [...new Set(updates.filter(needsNodeFonts).map((update) => update.nodeId))];
+  const entries = await Promise.all(ids.map(async (nodeId) => {
+    try {
+      return [nodeId, nodeFontRunsOf(filterFigmaNode(await sendCommandToFigma("get_node_info", { nodeId, depth: 0 }), 0))] as const;
+    } catch {
+      return [nodeId, []] as const;
+    }
+  }));
+  return Object.fromEntries(entries);
+}
+
 function errorResult(action: string, error: unknown) {
   let message = error instanceof Error ? error.message : String(error);
   if (message.includes("Unknown command")) {
-    message += ". The Figma plugin is older than this server: re-import the plugin (src/claude_mcp_plugin/manifest.json) in Figma to update it.";
+    message += ". The Figma plugin is older than this server: close the plugin in Figma and run it again (Plugins > Development) to load the new code.js.";
   }
   return {
     content: [{ type: "text" as const, text: `Error ${action}: ${message}` }],
@@ -137,8 +160,9 @@ export function registerNodeTreeTools(server: McpServer): void {
     async ({ updates }) => {
       try {
         const parsed = parseNodeUpdates(updates);
-        const { catalog, suggestions } = await fontCatalogFor(fontFamiliesOf(parsed, "update"));
-        const normalized = normalizeNodeUpdates(parsed, catalog, suggestions);
+        const nodeFonts = await nodeFontsFor(parsed);
+        const { catalog, suggestions } = await fontCatalogFor(fontFamiliesOf(parsed, "update", nodeFonts));
+        const normalized = normalizeNodeUpdates(parsed, catalog, suggestions, nodeFonts);
 
         const raw = await sendCommandToFigma(
           "update_nodes",

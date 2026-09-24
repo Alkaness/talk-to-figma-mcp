@@ -76,7 +76,7 @@ export function registerRestTools(server: McpServer): void {
     "rest_get_file",
     {
       description:
-        "Read a Figma file's structure via the REST API — works WITHOUT the plugin or an open Figma session, for ANY file the token's user can access. Pass a figma.com URL (its node-id is used automatically) or a file key. Returns the node tree in the same format as get_node_info (auto-layout, sizing, visibility, strokes, effects, text runs) to the requested depth; deeper levels become id/name/type stubs. Read-only: use plugin tools to modify the open file.",
+        "Read a Figma file's structure via the REST API — works WITHOUT the plugin or an open Figma session, for ANY file the token's user can access. Pass a figma.com URL (its node-id is used automatically) or a file key. Returns the node tree in the same format as get_node_info (auto-layout, sizing, visibility, strokes, effects, text runs) to the requested depth; deeper levels become id/name/type stubs. Two gaps against get_node_info: a rotated node has no width and height before rotation (the REST API sends them only with the costly geometry=paths), so they are derived from its bounding box, which is ambiguous within 2.9 degrees of 45 and 135; and GLASS effects carry no settings. Read-only: use plugin tools to modify the open file.",
       inputSchema: {
         file: fileParam,
         nodeId: z.string().optional().describe('Node to read (e.g. "12:34"). Overrides the URL\'s node-id. Omit to read the file root (pages).'),
