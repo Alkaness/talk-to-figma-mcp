@@ -3,7 +3,7 @@
   "name": "talk-to-figma-mcp",
   "display_name": "Talk to Figma",
   "description": "Lets Claude Desktop read, inspect and edit Figma files through a local relay and the Talk to Figma plugin. Works with free Figma accounts; Dev Mode is not required.",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": {
     "name": "Alkaness",
     "url": "https://github.com/Alkaness"

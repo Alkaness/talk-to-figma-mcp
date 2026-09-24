@@ -33,7 +33,7 @@ export const WS_URL = serverUrl === 'localhost' ? 'ws://127.0.0.1' : `wss://${se
 export const SERVER_CONFIG = {
   name: "TalkToFigmaMCP",
   description: "MCP server for the Talk to Figma plugin",
-  version: "1.5.0",
+  version: "1.6.0",
 };
 
 // Instructions surfaced to the MCP client (Claude) during initialization.

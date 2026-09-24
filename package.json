@@ -1,7 +1,7 @@
 {
   "name": "@alkaness/talk-to-figma-mcp",
   "description": "MCP server, relay and Figma plugin that let AI agents read, inspect and edit Figma files",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "module": "dist/talk_to_figma_mcp/server.js",
   "main": "dist/talk_to_figma_mcp/server.js",
   "bin": {
